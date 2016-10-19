@@ -6,9 +6,9 @@ scalaVersion := "2.10.5"
 
 crossScalaVersions := Seq("2.10.5", "2.11.7")
 
-spName := "sadikovi/spark-github-pr"
+spName := "lightcopy/spark-github-pr"
 
-val defaultSparkVersion = "2.0.0"
+val defaultSparkVersion = "1.6.2"
 
 sparkVersion := sys.props.getOrElse("spark.testVersion", defaultSparkVersion)
 
@@ -31,7 +31,7 @@ libraryDependencies ++= Seq(
 )
 
 libraryDependencies ++= Seq(
-  "org.apache.hadoop" % "hadoop-client" % hadoopVersion.value % "test",
+  "org.apache.hadoop" % "hadoop-client" % hadoopVersion.value % "test" exclude("javax.servlet", "servlet-api") force(),
   "org.apache.spark" %% "spark-core" % sparkVersion.value % "test" exclude("org.apache.hadoop", "hadoop-client"),
   "org.apache.spark" %% "spark-sql" % sparkVersion.value % "test" exclude("org.apache.hadoop", "hadoop-client")
 )
@@ -91,10 +91,10 @@ licenses += ("Apache-2.0", url("http://www.apache.org/licenses/LICENSE-2.0"))
 releasePublishArtifactsAction := PgpKeys.publishSigned.value
 
 pomExtra := (
-  <url>https://github.com/sadikovi/parsebox</url>
+  <url>https://github.com/lightcopy/spark-github-pr</url>
   <scm>
-    <url>git@github.com:sadikovi/parsebox.git</url>
-    <connection>scm:git:git@github.com:sadikovi/parsebox.git</connection>
+    <url>git@github.com:lightcopy/spark-github-pr.git</url>
+    <connection>scm:git:git@github.com:lightcopy/spark-github-pr.git</connection>
   </scm>
   <developers>
     <developer>
