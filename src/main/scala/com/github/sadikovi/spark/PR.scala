@@ -16,11 +16,8 @@
 
 package com.github.sadikovi.spark
 
-import com.github.sadikovi.testutil.{UnitTestSuite, SparkLocal}
+/** Dummy class for coverage */
+class PR(private val id: Int) {
 
-class PRSuite extends UnitTestSuite with SparkLocal {
-  test("simple test") {
-    val pr = new PR(0)
-    pr.getId() should be (0)
-  }
+  def getId(): Int = id
 }
