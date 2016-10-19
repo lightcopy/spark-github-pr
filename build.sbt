@@ -49,14 +49,12 @@ parallelExecution in Test := false
 // Skip tests during assembly
 test in assembly := {}
 
-ScoverageSbtPlugin.ScoverageKeys.coverageHighlighting := {
+coverageHighlighting := {
   if (scalaBinaryVersion.value == "2.10") false
   else true
 }
-
-ScoverageSbtPlugin.ScoverageKeys.coverageMinimum := 80
-ScoverageSbtPlugin.ScoverageKeys.coverageFailOnMinimum := true
-ScoverageSbtPlugin.ScoverageKeys.coverageExcludedPackages := ".*.benchmark"
+coverageMinimum := 80
+coverageFailOnMinimum := true
 
 EclipseKeys.eclipseOutput := Some("target/eclipse")
 
