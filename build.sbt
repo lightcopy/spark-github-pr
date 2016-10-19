@@ -20,15 +20,14 @@ hadoopVersion := sys.props.getOrElse("hadoop.testVersion", defaultHadoopVersion)
 
 spAppendScalaVersion := true
 
-spIncludeMaven := true
+spIncludeMaven := false
 
 spIgnoreProvided := true
 
 sparkComponents := Seq("sql")
 
 libraryDependencies ++= Seq(
-  "org.scalatest" %% "scalatest" % "2.2.4" % "test",
-  "com.novocode" % "junit-interface" % "0.11" % "test"
+  "org.scalatest" %% "scalatest" % "2.2.4" % "test"
 )
 
 libraryDependencies ++= Seq(
@@ -40,9 +39,8 @@ libraryDependencies ++= Seq(
 // check deprecation without manual restart
 scalacOptions in ThisBuild ++= Seq("-unchecked", "-deprecation", "-feature")
 
-// Display full-length stacktraces from ScalaTest:
+// Display full-length stacktraces from ScalaTest
 testOptions in Test += Tests.Argument("-oF")
-testOptions in Test += Tests.Argument(TestFrameworks.JUnit, "-a", "-v", "+q")
 
 parallelExecution in Test := false
 
