@@ -8,7 +8,7 @@ crossScalaVersions := Seq("2.10.5", "2.11.7")
 
 spName := "lightcopy/spark-github-pr"
 
-val defaultSparkVersion = "1.6.2"
+val defaultSparkVersion = "2.0.0"
 
 sparkVersion := sys.props.getOrElse("spark.testVersion", defaultSparkVersion)
 
@@ -34,6 +34,11 @@ libraryDependencies ++= Seq(
   "org.apache.hadoop" % "hadoop-client" % hadoopVersion.value % "test" exclude("javax.servlet", "servlet-api") force(),
   "org.apache.spark" %% "spark-core" % sparkVersion.value % "test" exclude("org.apache.hadoop", "hadoop-client"),
   "org.apache.spark" %% "spark-sql" % sparkVersion.value % "test" exclude("org.apache.hadoop", "hadoop-client")
+)
+
+libraryDependencies ++= Seq(
+  "org.scalaj" %% "scalaj-http" % "2.3.0",
+  "io.netty" % "netty" % "3.6.2.Final"
 )
 
 // check deprecation without manual restart

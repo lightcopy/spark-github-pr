@@ -14,13 +14,19 @@
  * limitations under the License.
  */
 
-package com.github.sadikovi.spark
+package com.github.sadikovi.spark.pr
 
-import com.github.sadikovi.testutil.{UnitTestSuite, SparkLocal}
+import org.apache.spark.sql.SQLContext
+import org.apache.spark.sql.sources.{BaseRelation, RelationProvider}
 
-class PRSuite extends UnitTestSuite with SparkLocal {
-  test("simple test") {
-    val pr = new PR(0)
-    pr.getId() should be (0)
+/**
+ * Default source provider for GitHub PR datasource.
+ * Schema inferrence is not supported for now.
+ */
+class DefaultSource extends RelationProvider {
+  override def createRelation(
+      sqlContext: SQLContext,
+      parameters: Map[String, String]): BaseRelation = {
+    new PullRequestRelation(sqlContext, parameters)
   }
 }
