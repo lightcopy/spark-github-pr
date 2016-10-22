@@ -16,6 +16,7 @@
 
 package com.github.sadikovi.spark.pr
 
+import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 
 import org.apache.spark.rdd.RDD
@@ -47,14 +48,14 @@ class PullRequestRelation(
   val maxBatchSize = 1000
 
   // User and repository to fetch, together they create user/repository pair
-  private[pr] val user: String = parameters.get("user") match {
+  private[spark] val user: String = parameters.get("user") match {
     case Some(username) if username.trim.nonEmpty => username.trim
     case other => sys.error(
       "Expected 'user' option, none/empty provided. " +
       "'user' option is either GitHub username or organization name")
   }
 
-  private[pr] val repo: String = parameters.get("repo") match {
+  private[spark] val repo: String = parameters.get("repo") match {
     case Some(repository) if repository.trim.nonEmpty => repository.trim
     case other => sys.error(
       "Expected 'repo' option, none/empty provided. " +
@@ -63,7 +64,7 @@ class PullRequestRelation(
   logger.info(s"$user/$repo repository is selected")
 
   // Size of pull requests batch to preload, this set is used to parallelize work across executors
-  private[pr] val batchSize: Int = parameters.get("batch") match {
+  private[spark] val batchSize: Int = parameters.get("batch") match {
     case Some(size) => try {
       val resolvedSize = size.toInt
       require(resolvedSize >= minBatchSize && resolvedSize <= maxBatchSize,
@@ -80,7 +81,7 @@ class PullRequestRelation(
   logger.info(s"Batch size $batchSize is selected")
 
   // authentication token
-  private[pr] val token: Option[String] = parameters.get("token") match {
+  private[spark] val token: Option[String] = parameters.get("token") match {
     case authToken @ Some(_) => authToken
     case None =>
       logger.warn("Token is not provided, rate limit is low for non-authenticated requests")
@@ -147,13 +148,13 @@ class PullRequestRelation(
     }
 
     val rawData = Json.parse(response.body).values
-    val prs: Seq[PullRequestInfo] = rawData.asInstanceOf[Seq[Map[String, String]]].map { data =>
+    val prs: Seq[PullRequestInfo] = rawData.asInstanceOf[Seq[Map[String, Any]]].map { data =>
       try {
-        val id = data.getOrElse("id", sys.error("Key 'id' does not exist")).toInt
-        val number = data.getOrElse("number", sys.error("Key 'number' does not exist")).toInt
-        val url = data.getOrElse("url", sys.error("Key 'url' does not exist"))
-        val updatedAt = data.getOrElse("updated_at", sys.error("Key 'updated_at' does not exist"))
-        val createdAt = data.getOrElse("created_at", sys.error("Key 'created_at' does not exist"))
+        val id = valueForKey[Int](data, "id")
+        val number = valueForKey[Int](data, "number")
+        val url = valueForKey[String](data, "url")
+        val updatedAt = valueForKey[String](data, "updated_at")
+        val createdAt = valueForKey[String](data, "created_at")
         // if update date does not exist, use create date instead, url should always be defined
         PullRequestInfo(id, number, url, Option(updatedAt).getOrElse(createdAt))
       } catch {
@@ -166,12 +167,17 @@ class PullRequestRelation(
 
     new PullRequestRDD(sqlContext.sparkContext, prs)
   }
+
+  /** Get value for key from map, will cast value to type T */
+  private[spark] def valueForKey[T: ClassTag](data: Map[String, Any], key: String): T = {
+    data.getOrElse(key, sys.error(s"Key $key does not exist")).asInstanceOf[T]
+  }
 }
 
 /**
  * Generic utilities to work with pull requests and sending requests to GitHub.
  */
-private[pr] object PullRequestSource {
+private[spark] object PullRequestSource {
   val baseURL = "https://api.github.com"
 
   /**

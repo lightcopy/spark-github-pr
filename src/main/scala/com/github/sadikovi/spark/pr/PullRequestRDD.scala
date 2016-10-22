@@ -16,6 +16,8 @@
 
 package com.github.sadikovi.spark.pr
 
+import scala.collection.mutable.ArrayBuffer
+
 import org.apache.spark.{InterruptibleIterator, Partition, SparkContext, TaskContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.Row
@@ -42,8 +44,10 @@ private[pr] case class PullRequestInfo(id: Int, number: Int, url: String, update
 private[pr] class PullRequestPartition(
     val rddId: Long,
     val slice: Int,
-    val info: PullRequestInfo)
+    val info: Seq[PullRequestInfo])
   extends Partition with Serializable {
+
+  def iterator: Iterator[PullRequestInfo] = info.toIterator
 
   override def hashCode(): Int = (41 * (41 + rddId) + slice).toInt
 
@@ -61,17 +65,30 @@ private[pr] class PullRequestPartition(
  * Currently every info instance is mapped to each partition, trying to maximize number of tasks,
  * as an opposite to minimizing scheduling latency.
  */
-private[pr] class PullRequestRDD(
+private[spark] class PullRequestRDD(
     sc: SparkContext,
     @transient private val data: Seq[PullRequestInfo])
   extends RDD[Row](sc, Nil) {
 
   override def getPartitions: Array[Partition] = {
-    data.zipWithIndex.map { case (info, i) => new PullRequestPartition(id, i, info) }.toArray
+    data.zipWithIndex.map { case (info, i) => new PullRequestPartition(id, i, Seq(info)) }.toArray
   }
 
   override def compute(split: Partition, context: TaskContext): Iterator[Row] = {
-    // new InterruptibleIterator(context, split.asInstanceOf[PullRequestPartition].iterator)
+    val buffer = new ArrayBuffer[Row]()
+    for (info <- split.asInstanceOf[PullRequestPartition].iterator) {
+      // perform request, convert result int row and append to buffer
+    }
+    new InterruptibleIterator(context, buffer.toIterator)
+  }
+}
+
+private[spark] object PullRequestRDD {
+  /**
+   * Convert JSON parsed data into Row.
+   * Resulting row should follow schema defined in [[PullRequestRelation]].
+   */
+  def jsonToRow(json: Any): Row = {
     null
   }
 }

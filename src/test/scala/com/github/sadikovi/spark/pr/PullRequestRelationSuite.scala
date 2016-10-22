@@ -219,4 +219,33 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
     request.params.isEmpty should be (true)
     request.headers.toMap.get("Authorization") should be (None)
   }
+
+  test("value for key - key does not exist") {
+    val relation = new PullRequestRelation(null, Map("user" -> "user", "repo" -> "repo"))
+    val map: Map[String, Any] = Map("key1" -> "abc", "key2" -> 12, "key3" -> true)
+    val err = intercept[RuntimeException] {
+      relation.valueForKey[String](map, "key4")
+    }
+    err.getMessage should be ("Key key4 does not exist")
+  }
+
+  test("value for key - casting exception") {
+    val relation = new PullRequestRelation(null, Map("user" -> "user", "repo" -> "repo"))
+    val map: Map[String, Any] = Map("key1" -> "abc", "key2" -> 12, "key3" -> true)
+    intercept[ClassCastException] {
+      relation.valueForKey[Double](map, "key1")
+    }
+
+    intercept[ClassCastException] {
+      relation.valueForKey[Int](map, "key3")
+    }
+  }
+
+  test("value for key - correct retrieval") {
+    val relation = new PullRequestRelation(null, Map("user" -> "user", "repo" -> "repo"))
+    val map: Map[String, Any] = Map("key1" -> "abc", "key2" -> 12, "key3" -> true)
+    relation.valueForKey[String](map, "key1") should be ("abc")
+    relation.valueForKey[Int](map, "key2") should be (12)
+    relation.valueForKey[Boolean](map, "key3") should be (true)
+  }
 }
