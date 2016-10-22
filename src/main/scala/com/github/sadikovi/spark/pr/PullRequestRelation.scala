@@ -16,6 +16,7 @@
 
 package com.github.sadikovi.spark.pr
 
+import scala.math.BigInt
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 
@@ -91,21 +92,21 @@ class PullRequestRelation(
   override def schema: StructType = {
     StructType(
       StructField("id", IntegerType, false) ::
-      StructField("url", StringType, false) ::
+      StructField("url", StringType, true) ::
       // patch and diff complimentary urls
       StructField("html_url", StringType, true) ::
       StructField("diff_url", StringType, true) ::
       StructField("patch_url", StringType, true) ::
       // pull request metadata
       StructField("number", IntegerType, false) ::
-      StructField("state", StringType, false) ::
+      StructField("state", StringType, true) ::
       StructField("title", StringType, true) ::
       StructField("body", StringType, true) ::
-      // pull request dates, can be null
-      StructField("created_at", DateType, true) ::
-      StructField("updated_at", DateType, true) ::
-      StructField("closed_at", DateType, true) ::
-      StructField("merged_at", DateType, true) ::
+      // pull request dates in UTC, can be null
+      StructField("created_at", TimestampType, true) ::
+      StructField("updated_at", TimestampType, true) ::
+      StructField("closed_at", TimestampType, true) ::
+      StructField("merged_at", TimestampType, true) ::
       // repository that pull request is open against
       StructField("base", StructType(
         // branch name
@@ -114,18 +115,18 @@ class PullRequestRelation(
         // target repository
         StructField("repo", StructType(
           StructField("id", IntegerType, false) ::
-          StructField("name", StringType, false) ::
-          StructField("full_name", StringType, false) ::
+          StructField("name", StringType, true) ::
+          StructField("full_name", StringType, true) ::
           StructField("description", StringType, true) ::
           StructField("private", BooleanType, false) ::
-          StructField("url", StringType, false) ::
+          StructField("url", StringType, true) ::
           StructField("html_url", StringType, true) ::
           Nil), true) :: Nil), true) ::
       // user who opened pull request
       StructField("user", StructType(
-        StructField("login", StringType, false) ::
+        StructField("login", StringType, true) ::
         StructField("id", IntegerType, false) ::
-        StructField("url", StringType, false) ::
+        StructField("url", StringType, true) ::
         StructField("html_url", StringType, true) :: Nil), true) ::
       // pull request statistics
       StructField("merged", BooleanType, false) ::
@@ -142,7 +143,8 @@ class PullRequestRelation(
   override def buildScan(): RDD[Row] = {
     // Based on resolved username and repository prepare request to fetch all repositories for the
     // batch size, then partition pull requests across executors, so each url is resolved per task
-    val response = PullRequestSource.pulls(user, repo, batchSize, token).asString
+    logger.info(s"Fetching overall pull requests list for $user/$repo")
+    val response = HttpUtils.pulls(user, repo, batchSize, token).asString
     if (!response.isSuccess) {
       throw new RuntimeException(s"Request failed with code ${response.code}: ${response.body}")
     }
@@ -150,86 +152,20 @@ class PullRequestRelation(
     val rawData = Json.parse(response.body).values
     val prs: Seq[PullRequestInfo] = rawData.asInstanceOf[Seq[Map[String, Any]]].map { data =>
       try {
-        val id = valueForKey[Int](data, "id")
-        val number = valueForKey[Int](data, "number")
-        val url = valueForKey[String](data, "url")
-        val updatedAt = valueForKey[String](data, "updated_at")
-        val createdAt = valueForKey[String](data, "created_at")
+        val id = Utils.valueForKey[BigInt](data, "id").toInt
+        val number = Utils.valueForKey[BigInt](data, "number").toInt
+        val url = Utils.valueForKey[String](data, "url")
+        val updatedAt = Utils.valueForKey[String](data, "updated_at")
+        val createdAt = Utils.valueForKey[String](data, "created_at")
         // if update date does not exist, use create date instead, url should always be defined
-        PullRequestInfo(id, number, url, Option(updatedAt).getOrElse(createdAt))
+        PullRequestInfo(id, number, url, Option(updatedAt).getOrElse(createdAt), token)
       } catch {
         case NonFatal(err) =>
           throw new RuntimeException(
-            s"Failed to convert to 'PullRequestInfo', body=${response.body}", err)
+            s"Failed to convert to 'PullRequestInfo', data=$data", err)
       }
     }
-    logger.debug(s"Processed ${prs.length} pull requests")
 
-    new PullRequestRDD(sqlContext.sparkContext, prs)
-  }
-
-  /** Get value for key from map, will cast value to type T */
-  private[spark] def valueForKey[T: ClassTag](data: Map[String, Any], key: String): T = {
-    data.getOrElse(key, sys.error(s"Key $key does not exist")).asInstanceOf[T]
-  }
-}
-
-/**
- * Generic utilities to work with pull requests and sending requests to GitHub.
- */
-private[spark] object PullRequestSource {
-  val baseURL = "https://api.github.com"
-
-  /**
-   * Make request to GitHub to return batch of pull requests.
-   * Note that only first page is retrieved.
-   * @param user GitHub username/organization
-   * @param repo repository name
-   * @param batch how many pull requests fetch per page
-   * @param token optional authentication token to increase rate limit
-   * @return HttpRequest
-   */
-  def pulls(
-      user: String,
-      repo: String,
-      batch: Int,
-      token: Option[String]): HttpRequest = {
-    require(user.nonEmpty, "'user' parameter is empty")
-    require(repo.nonEmpty, "'repo' parameter is empty")
-    require(batch > 0, s"Non-positive batch size $batch")
-    require(!user.contains("/"), "'user' parameter contains '/' which will alter URL")
-    require(!repo.contains("/"), "'repo' parameter contains '/' which will alter URL")
-    val url = s"$baseURL/repos/$user/$repo/pulls"
-    val request = Http(url).method("GET").param("per_page", s"$batch")
-    if (token.isDefined) request.header("Authorization", s"token ${token.get}") else request
-  }
-
-  /**
-   * Fetch pull request for a specific url.
-   * @param url fully-qualified URL, comes from JSON field "url"
-   * @param token optional token to increase rate limit
-   * @return HttpRequest
-   */
-  def pull(url: String, token: Option[String]): HttpRequest = {
-    val request = Http(url).method("GET")
-    if (token.isDefined) request.header("Authorization", s"token ${token.get}") else request
-  }
-
-  /**
-   * Fetch pull request for user, repo and number.
-   * @param user GitHub username/organization
-   * @param repo repository name
-   * @param number pull request number
-   * @param token optional token to increase rate limit
-   * @return HttpRequest
-   */
-  def pull(user: String, repo: String, number: Int, token: Option[String]): HttpRequest = {
-    require(user.nonEmpty, "'user' parameter is empty")
-    require(repo.nonEmpty, "'repo' parameter is empty")
-    require(number >= 0, s"Negative pull request number $number")
-    require(!user.contains("/"), "'user' parameter contains '/' which will alter URL")
-    require(!repo.contains("/"), "'repo' parameter contains '/' which will alter URL")
-    val url = s"$baseURL/repos/$user/$repo/pulls/$number"
-    pull(url, token)
+    new PullRequestRDD(sqlContext.sparkContext, prs, schema)
   }
 }

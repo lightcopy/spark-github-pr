@@ -21,13 +21,19 @@ import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.{InterruptibleIterator, Partition, SparkContext, TaskContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.Row
+import org.apache.spark.sql.types._
 
 import org.json4s.jackson.{JsonMethods => Json}
 
 /**
  * [[PullRequestInfo]] stores partial information about pull request that is used in partiitoning.
  */
-private[pr] case class PullRequestInfo(id: Int, number: Int, url: String, updatedAt: String) {
+private[pr] case class PullRequestInfo(
+    id: Int,
+    number: Int,
+    url: String,
+    updatedAt: String,
+    token: Option[String]) {
   override def equals(other: Any): Boolean = other match {
     case that: PullRequestInfo =>
       this.id == that.id && this.number == that.number
@@ -67,7 +73,8 @@ private[pr] class PullRequestPartition(
  */
 private[spark] class PullRequestRDD(
     sc: SparkContext,
-    @transient private val data: Seq[PullRequestInfo])
+    @transient private val data: Seq[PullRequestInfo],
+    private val schema: StructType)
   extends RDD[Row](sc, Nil) {
 
   override def getPartitions: Array[Partition] = {
@@ -78,17 +85,16 @@ private[spark] class PullRequestRDD(
     val buffer = new ArrayBuffer[Row]()
     for (info <- split.asInstanceOf[PullRequestPartition].iterator) {
       // perform request, convert result int row and append to buffer
+      logInfo(s"Processing $info")
+      val response = HttpUtils.pull(info.url, info.token).asString
+      if (!response.isSuccess) {
+        throw new RuntimeException(s"Request failed with code ${response.code}: ${response.body}")
+      }
+
+      val json = Json.parse(response.body).values.asInstanceOf[Map[String, Any]]
+      val row = Utils.jsonToRow(schema, json)
+      buffer.append(row)
     }
     new InterruptibleIterator(context, buffer.toIterator)
-  }
-}
-
-private[spark] object PullRequestRDD {
-  /**
-   * Convert JSON parsed data into Row.
-   * Resulting row should follow schema defined in [[PullRequestRelation]].
-   */
-  def jsonToRow(json: Any): Row = {
-    null
   }
 }

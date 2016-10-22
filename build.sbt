@@ -51,6 +51,8 @@ parallelExecution in Test := false
 
 // Skip tests during assembly
 test in assembly := {}
+// Exclude scala library from assembly
+assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
 
 coverageHighlighting := {
   if (scalaBinaryVersion.value == "2.10") false

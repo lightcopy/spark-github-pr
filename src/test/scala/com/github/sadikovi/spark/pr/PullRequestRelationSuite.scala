@@ -16,6 +16,12 @@
 
 package com.github.sadikovi.spark.pr
 
+import java.math.BigInteger
+import java.sql.Timestamp
+
+import scala.math.BigInt
+
+import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
 
 import com.github.sadikovi.testutil.{SparkLocal, UnitTestSuite}
@@ -146,28 +152,28 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
 
   test("pull request source - pulls() validation") {
     intercept[IllegalArgumentException] {
-      PullRequestSource.pulls("", "repo", 10, None)
+      HttpUtils.pulls("", "repo", 10, None)
     }
 
     intercept[IllegalArgumentException] {
-      PullRequestSource.pulls("user", "", 10, None)
+      HttpUtils.pulls("user", "", 10, None)
     }
 
     intercept[IllegalArgumentException] {
-      PullRequestSource.pulls("a/b/c", "repo", 10, None)
+      HttpUtils.pulls("a/b/c", "repo", 10, None)
     }
 
     intercept[IllegalArgumentException] {
-      PullRequestSource.pulls("user", "/a/b/c", 10, None)
+      HttpUtils.pulls("user", "/a/b/c", 10, None)
     }
 
     intercept[IllegalArgumentException] {
-      PullRequestSource.pulls("user", "repo", 0, None)
+      HttpUtils.pulls("user", "repo", 0, None)
     }
   }
 
   test("pull request source - pulls() without token") {
-    val request = PullRequestSource.pulls("user", "repo", 7, None)
+    val request = HttpUtils.pulls("user", "repo", 7, None)
     request.method should be ("GET")
     request.url should be ("https://api.github.com/repos/user/repo/pulls")
     request.params should be (List(("per_page", "7")))
@@ -175,7 +181,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("pull request source - pulls() with token") {
-    val request = PullRequestSource.pulls("user", "repo", 15, Some("abc123"))
+    val request = HttpUtils.pulls("user", "repo", 15, Some("abc123"))
     request.method should be ("GET")
     request.url should be ("https://api.github.com/repos/user/repo/pulls")
     request.params should be (List(("per_page", "15")))
@@ -184,28 +190,28 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
 
   test("pull request source - pull() validation") {
     intercept[IllegalArgumentException] {
-      PullRequestSource.pull("", "repo", 12345, None)
+      HttpUtils.pull("", "repo", 12345, None)
     }
 
     intercept[IllegalArgumentException] {
-      PullRequestSource.pulls("user", "", 12345, None)
+      HttpUtils.pull("user", "", 12345, None)
     }
 
     intercept[IllegalArgumentException] {
-      PullRequestSource.pulls("a/b/c", "repo", 10, None)
+      HttpUtils.pull("a/b/c", "repo", 10, None)
     }
 
     intercept[IllegalArgumentException] {
-      PullRequestSource.pulls("user", "/a/b/c", 10, None)
+      HttpUtils.pull("user", "/a/b/c", 10, None)
     }
 
     intercept[IllegalArgumentException] {
-      PullRequestSource.pulls("user", "repo", -1, None)
+      HttpUtils.pull("user", "repo", -1, None)
     }
   }
 
   test("pull request source - pull() with token") {
-    val request = PullRequestSource.pull("user", "repo", 12345, Some("abc123"))
+    val request = HttpUtils.pull("user", "repo", 12345, Some("abc123"))
     request.method should be ("GET")
     request.url should be ("https://api.github.com/repos/user/repo/pulls/12345")
     request.params.isEmpty should be (true)
@@ -213,7 +219,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("pull request source - pull() without token") {
-    val request = PullRequestSource.pull("user", "repo", 12345, None)
+    val request = HttpUtils.pull("user", "repo", 12345, None)
     request.method should be ("GET")
     request.url should be ("https://api.github.com/repos/user/repo/pulls/12345")
     request.params.isEmpty should be (true)
@@ -221,31 +227,159 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("value for key - key does not exist") {
-    val relation = new PullRequestRelation(null, Map("user" -> "user", "repo" -> "repo"))
     val map: Map[String, Any] = Map("key1" -> "abc", "key2" -> 12, "key3" -> true)
     val err = intercept[RuntimeException] {
-      relation.valueForKey[String](map, "key4")
+      Utils.valueForKey[String](map, "key4")
     }
     err.getMessage should be ("Key key4 does not exist")
   }
 
   test("value for key - casting exception") {
-    val relation = new PullRequestRelation(null, Map("user" -> "user", "repo" -> "repo"))
     val map: Map[String, Any] = Map("key1" -> "abc", "key2" -> 12, "key3" -> true)
     intercept[ClassCastException] {
-      relation.valueForKey[Double](map, "key1")
+      Utils.valueForKey[Double](map, "key1")
     }
 
     intercept[ClassCastException] {
-      relation.valueForKey[Int](map, "key3")
+      Utils.valueForKey[Int](map, "key3")
     }
   }
 
   test("value for key - correct retrieval") {
-    val relation = new PullRequestRelation(null, Map("user" -> "user", "repo" -> "repo"))
     val map: Map[String, Any] = Map("key1" -> "abc", "key2" -> 12, "key3" -> true)
-    relation.valueForKey[String](map, "key1") should be ("abc")
-    relation.valueForKey[Int](map, "key2") should be (12)
-    relation.valueForKey[Boolean](map, "key3") should be (true)
+    Utils.valueForKey[String](map, "key1") should be ("abc")
+    Utils.valueForKey[Int](map, "key2") should be (12)
+    Utils.valueForKey[Boolean](map, "key3") should be (true)
+  }
+
+  test("json to row - primitive schema") {
+    val struct = StructType(
+      StructField("a", IntegerType) ::
+      StructField("b", BooleanType) ::
+      StructField("c", DoubleType) ::
+      StructField("d", LongType) ::
+      StructField("e", StringType) :: Nil)
+    val json: Map[String, Any] = Map("a" -> 12, "b" -> false, "c" -> 1.2, "d" -> 10L, "e" -> "abc")
+    val row = Utils.jsonToRow(struct, json)
+    row should be (Row(12, false, 1.2, 10L, "abc"))
+  }
+
+  test("json to row - complex schema") {
+    val struct = StructType(
+      StructField("a", IntegerType) ::
+      StructField("b", BooleanType) ::
+      StructField("c", StructType(
+        StructField("c.a", StringType) ::
+        StructField("c.b", IntegerType) ::
+        StructField("c.c", BooleanType) :: Nil)
+      ) ::
+      StructField("d", StringType) ::
+      StructField("e", StructType(
+        StructField("e.a", StringType) ::
+        StructField("e.b", IntegerType) ::
+        StructField("e.c", DoubleType) :: Nil)
+      ) :: Nil)
+
+    val json: Map[String, Any] = Map(
+      "a" -> 12,
+      "b" -> true,
+      "c" -> Map("c.a" -> "a", "c.b" -> 1, "c.c" -> false),
+      "d" -> "d",
+      "e" -> Map("e.a" -> "e", "e.b" -> 2, "e.c" -> 0.3))
+
+    val row = Utils.jsonToRow(struct, json)
+    row should be (Row(12, true, Row("a", 1, false), "d", Row("e", 2, 0.3)))
+  }
+
+  test("json to row - process big int values") {
+    val struct = StructType(
+      StructField("a", IntegerType) ::
+      StructField("b", LongType) :: Nil)
+    val json: Map[String, Any] = Map(
+      "a" -> new BigInt(BigInteger.TEN),
+      "b" -> new BigInt(BigInteger.ONE))
+    val row = Utils.jsonToRow(struct, json)
+    row should be (Row(10, 1L))
+  }
+
+  test("json to row - only fetch required fields") {
+    val struct = StructType(
+      StructField("a", IntegerType) ::
+      StructField("e", StringType) :: Nil)
+    val json: Map[String, Any] = Map("a" -> 12, "b" -> false, "c" -> 1.2, "d" -> 10L, "e" -> "abc")
+    val row = Utils.jsonToRow(struct, json)
+    row should be (Row(12, "abc"))
+  }
+
+  test("json to row - fail if key does not exist") {
+    val struct = StructType(StructField("a", IntegerType) :: Nil)
+    val json: Map[String, Any] = Map("c" -> 12)
+    val err = intercept[RuntimeException] {
+      Utils.jsonToRow(struct, json)
+    }
+    err.getMessage.contains("Key a does not exist") should be (true)
+  }
+
+  test("json to row - fail if json is null") {
+    val struct = StructType(StructField("a", IntegerType) :: Nil)
+    intercept[IllegalArgumentException] {
+      Utils.jsonToRow(struct, null)
+    }
+  }
+
+  test("json to row - process timestamp type") {
+    val struct = StructType(
+      StructField("a", TimestampType) ::
+      StructField("b", TimestampType) :: Nil)
+    val json: Map[String, Any] = Map("a" -> "2016-10-19T12:30:51Z", "b" -> null)
+    val row = Utils.jsonToRow(struct, json)
+    row.size should be (2)
+    row(0).asInstanceOf[Timestamp].getTime should be (1476880251000L)
+    row(1).asInstanceOf[Timestamp] should be (null)
+  }
+
+  test("json to row - fail for unsupported type") {
+    val struct = StructType(StructField("a", DateType) :: Nil)
+    val json: Map[String, Any] = Map("a" -> "abc")
+    val err = intercept[RuntimeException] {
+      Utils.jsonToRow(struct, json)
+    }
+    err.getMessage.contains("Unsupported data type") should be (true)
+  }
+
+  test("pull request info - equality") {
+    val info1 = PullRequestInfo(1, 100, "url", "date", None)
+    val info2 = PullRequestInfo(2, 101, "url", "date", None)
+    val info3 = PullRequestInfo(1, 102, "url", "date", None)
+    val info4 = PullRequestInfo(1, 100, "url1", "date1", Some("token"))
+    info1.equals(info2) should be (false)
+    info1.equals(info3) should be (false)
+    info1.equals(info4) should be (true)
+  }
+
+  test("pull request info - hash code") {
+    val info1 = PullRequestInfo(1, 100, "url", "date", None)
+    val info2 = PullRequestInfo(2, 101, "url", "date", None)
+    val info3 = PullRequestInfo(1, 102, "url", "date", None)
+    val info4 = PullRequestInfo(1, 100, "url1", "date1", Some("token"))
+    assert(info1.hashCode != info2.hashCode)
+    assert(info1.hashCode != info3.hashCode)
+    assert(info1.hashCode == info4.hashCode)
+  }
+
+  test("pull request partition - equality") {
+    val split1 = new PullRequestPartition(0, 1, null)
+    val split2 = new PullRequestPartition(0, 1, Seq(PullRequestInfo(1, 100, "url", "date", None)))
+    val split3 = new PullRequestPartition(0, 2, Seq.empty)
+    split1.equals(split2) should be (true)
+    split1.equals(split3) should be (false)
+  }
+
+  test("pull request partition - hash code") {
+    val split1 = new PullRequestPartition(0, 1, null)
+    val split2 = new PullRequestPartition(0, 1, Seq(PullRequestInfo(1, 100, "url", "date", None)))
+    val split3 = new PullRequestPartition(0, 2, Seq.empty)
+    assert(split1.hashCode == split2.hashCode)
+    assert(split1.hashCode != split3.hashCode)
   }
 }
