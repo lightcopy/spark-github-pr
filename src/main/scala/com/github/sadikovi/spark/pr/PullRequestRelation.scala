@@ -16,9 +16,13 @@
 
 package com.github.sadikovi.spark.pr
 
+import java.util.concurrent.TimeUnit
+
 import scala.math.BigInt
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
+
+import com.google.common.cache.{CacheBuilder, CacheLoader, LoadingCache, RemovalListener, RemovalNotification}
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Row, SQLContext}
@@ -82,8 +86,8 @@ class PullRequestRelation(
   logger.info(s"Batch size $batchSize is selected")
 
   // authentication token
-  private[spark] val token: Option[String] = parameters.get("token") match {
-    case authToken @ Some(_) => authToken
+  private[spark] val authToken: Option[String] = parameters.get("token") match {
+    case token @ Some(_) => token
     case None =>
       logger.warn("Token is not provided, rate limit is low for non-authenticated requests")
       None
@@ -143,14 +147,24 @@ class PullRequestRelation(
   override def buildScan(): RDD[Row] = {
     // Based on resolved username and repository prepare request to fetch all repositories for the
     // batch size, then partition pull requests across executors, so each url is resolved per task
-    logger.info(s"Fetching overall pull requests list for $user/$repo")
+    logger.info(s"List pull requests for $user/$repo")
+    val prs = cache.get(CacheKey(user, repo, batchSize))
+    new PullRequestRDD(sqlContext.sparkContext, prs, schema)
+  }
+
+  /** List pull requests for user/repo provided returning batch, token for increasing rate limit */
+  private def listPullRequests(
+      user: String,
+      repo: String,
+      batchSize: Int,
+      token: Option[String]): Seq[PullRequestInfo] = {
     val response = HttpUtils.pulls(user, repo, batchSize, token).asString
     if (!response.isSuccess) {
       throw new RuntimeException(s"Request failed with code ${response.code}: ${response.body}")
     }
 
     val rawData = Json.parse(response.body).values
-    val prs: Seq[PullRequestInfo] = rawData.asInstanceOf[Seq[Map[String, Any]]].map { data =>
+    rawData.asInstanceOf[Seq[Map[String, Any]]].map { data =>
       try {
         val id = Utils.valueForKey[BigInt](data, "id").toInt
         val number = Utils.valueForKey[BigInt](data, "number").toInt
@@ -165,7 +179,26 @@ class PullRequestRelation(
             s"Failed to convert to 'PullRequestInfo', data=$data", err)
       }
     }
-
-    new PullRequestRDD(sqlContext.sparkContext, prs, schema)
   }
+
+  private val pullRequestLoader = new CacheLoader[CacheKey, Seq[PullRequestInfo]]() {
+    override def load(key: CacheKey): Seq[PullRequestInfo] = {
+      logger.info(s"Cache miss for key $key, fetching data")
+      listPullRequests(key.user, key.repo, key.batchSize, authToken)
+    }
+  }
+
+  private val onRemovalAction = new RemovalListener[CacheKey, Seq[PullRequestInfo]] {
+    override def onRemoval(rm: RemovalNotification[CacheKey, Seq[PullRequestInfo]]): Unit = {
+      logger.info(s"Evicting key ${rm.getKey}")
+    }
+  }
+
+  // Relation cache for listing pull requests, expires after 1 minute
+  private[spark] val cache: LoadingCache[CacheKey, Seq[PullRequestInfo]] =
+    CacheBuilder.newBuilder().
+      maximumSize(100).
+      expireAfterWrite(1, TimeUnit.MINUTES).
+      removalListener(onRemovalAction).
+      build(pullRequestLoader)
 }

@@ -27,6 +27,9 @@ import org.apache.spark.sql.types._
 
 import scalaj.http.{Http, HttpRequest}
 
+/** Cache key for user/repo retrieval */
+private[spark] case class CacheKey(user: String, repo: String, batchSize: Int)
+
 /** Generic utilities to work with pull requests and sending requests to GitHub */
 private[spark] object HttpUtils {
   val baseURL = "https://api.github.com"

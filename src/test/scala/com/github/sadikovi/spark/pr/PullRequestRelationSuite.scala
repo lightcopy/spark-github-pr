@@ -126,11 +126,11 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   test("select token if available") {
     var relation = new PullRequestRelation(null,
       Map("user" -> "user", "repo" -> "repo", "token" -> "abc"))
-    relation.token should be (Some("abc"))
+    relation.authToken should be (Some("abc"))
 
     relation = new PullRequestRelation(null,
       Map("user" -> "user", "repo" -> "repo"))
-    relation.token should be (None)
+    relation.authToken should be (None)
   }
 
   test("check main schema items") {

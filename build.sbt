@@ -38,7 +38,8 @@ libraryDependencies ++= Seq(
 
 libraryDependencies ++= Seq(
   "org.scalaj" %% "scalaj-http" % "2.3.0",
-  "io.netty" % "netty" % "3.6.2.Final"
+  "io.netty" % "netty" % "3.6.2.Final",
+  "com.google.guava" % "guava" % "14.0.1"
 )
 
 // check deprecation without manual restart
