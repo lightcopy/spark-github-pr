@@ -24,6 +24,8 @@ import scala.math.BigInt
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
 
+import scalaj.http.HttpResponse
+
 import com.github.sadikovi.testutil.{SparkLocal, UnitTestSuite}
 
 class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
@@ -355,6 +357,8 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
     info1.equals(info2) should be (false)
     info1.equals(info3) should be (false)
     info1.equals(info4) should be (true)
+    info1.equals(null) should be (false)
+    info1.equals("str") should be (false)
   }
 
   test("pull request info - hash code") {
@@ -373,6 +377,8 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
     val split3 = new PullRequestPartition(0, 2, Seq.empty)
     split1.equals(split2) should be (true)
     split1.equals(split3) should be (false)
+    split1.equals(null) should be (false)
+    split1.equals("str") should be (false)
   }
 
   test("pull request partition - hash code") {
@@ -381,5 +387,96 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
     val split3 = new PullRequestPartition(0, 2, Seq.empty)
     assert(split1.hashCode == split2.hashCode)
     assert(split1.hashCode != split3.hashCode)
+  }
+
+  test("pull request partition slice") {
+    val split = new PullRequestPartition(0, 1, null)
+    split.index should be (split.slice)
+  }
+
+  test("pull request partition iterator") {
+    val split = new PullRequestPartition(0, 1, Seq(PullRequestInfo(1, 100, "url", "date", None)))
+    split.iterator.size should be (1)
+    val info = split.iterator.next
+    info.id should be (1)
+    info.number should be (100)
+  }
+
+  test("pull request rdd - partitions") {
+    val schema = StructType(StructField("a", StringType) :: Nil)
+    val data = Seq(
+      PullRequestInfo(1, 101, "url", "updatedAt", None),
+      PullRequestInfo(3, 103, "url", "updatedAt", None),
+      PullRequestInfo(2, 102, "url", "updatedAt", None))
+    val rdd = new PullRequestRDD(sc, data, schema)
+    val splits = rdd.getPartitions.map(_.asInstanceOf[PullRequestPartition])
+    splits.length should be (data.length)
+    splits(0).index should be (0)
+    splits(1).index should be (1)
+    splits(2).index should be (2)
+    splits(0).info.length should be (1)
+    splits(1).info.length should be (1)
+    splits(2).info.length should be (1)
+  }
+
+  test("list from response - response 5xx failure") {
+    val relation = new PullRequestRelation(null, Map("user" -> "user", "repo" -> "repo"))
+    val err = intercept[RuntimeException] {
+      relation.listFromResponse(HttpResponse("Error", 500, Map.empty), None)
+    }
+    err.getMessage.contains("Request failed with code 500") should be (true)
+  }
+
+  test("list from response - response 4xx failure") {
+    val relation = new PullRequestRelation(null, Map("user" -> "user", "repo" -> "repo"))
+    val err = intercept[RuntimeException] {
+      relation.listFromResponse(HttpResponse("Error", 404, Map.empty), None)
+    }
+    err.getMessage.contains("Request failed with code 404") should be (true)
+  }
+
+  test("list from response - response 3xx failure") {
+    val relation = new PullRequestRelation(null, Map("user" -> "user", "repo" -> "repo"))
+    // fail on redirects as they are not supported for now
+    val err = intercept[RuntimeException] {
+      relation.listFromResponse(HttpResponse("Error", 302, Map.empty), None)
+    }
+    err.getMessage.contains("Request failed with code 302") should be (true)
+  }
+
+  test("list from response - key does not exist") {
+    val relation = new PullRequestRelation(null, Map("user" -> "user", "repo" -> "repo"))
+    val err = intercept[RuntimeException] {
+      relation.listFromResponse(HttpResponse("[{\"a\": true}]", 200, Map.empty), None)
+    }
+    err.getMessage should be ("Failed to convert to 'PullRequestInfo', data=Map(a -> true)")
+    err.getCause.getMessage should be ("Key id does not exist")
+  }
+
+  test("list from response - conversion fails") {
+    val relation = new PullRequestRelation(null, Map("user" -> "user", "repo" -> "repo"))
+    val err = intercept[RuntimeException] {
+      relation.listFromResponse(HttpResponse("[{\"id\": true}]", 200, Map.empty), None)
+    }
+    err.getMessage should be ("Failed to convert to 'PullRequestInfo', data=Map(id -> true)")
+    err.getCause.getMessage.contains("cannot be cast to") should be (true)
+  }
+
+  test("list from response - parse into pull request info") {
+    val relation = new PullRequestRelation(null, Map("user" -> "user", "repo" -> "repo"))
+    val body = """[
+      |{
+      |  "id": 1,
+      |  "number": 100,
+      |  "url": "url",
+      |  "updated_at": null,
+      |  "created_at": "2010-10-23T12:52:31Z"
+      |}]""".stripMargin
+    val seq = relation.listFromResponse(HttpResponse(body, 200, Map.empty), None)
+    seq.length should be (1)
+    seq.head.id should be (1)
+    seq.head.number should be (100)
+    seq.head.url should be ("url")
+    seq.head.updatedAt should be ("2010-10-23T12:52:31Z")
   }
 }

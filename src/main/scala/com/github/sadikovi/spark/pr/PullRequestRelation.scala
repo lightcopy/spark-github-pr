@@ -33,7 +33,7 @@ import org.json4s.jackson.{JsonMethods => Json}
 
 import org.slf4j.LoggerFactory
 
-import scalaj.http.{Http, HttpRequest}
+import scalaj.http.{Http, HttpRequest, HttpResponse}
 
 /**
  * [[PullRequestRelation]] is a table to store GitHub pull requests information, currently
@@ -159,6 +159,13 @@ class PullRequestRelation(
       batchSize: Int,
       token: Option[String]): Seq[PullRequestInfo] = {
     val response = HttpUtils.pulls(user, repo, batchSize, token).asString
+    listFromResponse(response, token)
+  }
+
+  // open for testing
+  private[spark] def listFromResponse(
+      response: HttpResponse[String],
+      token: Option[String]): Seq[PullRequestInfo] = {
     if (!response.isSuccess) {
       throw new RuntimeException(s"Request failed with code ${response.code}: ${response.body}")
     }
