@@ -71,6 +71,7 @@ private[pr] class PullRequestRDD(
   }
 
   override def compute(split: Partition, context: TaskContext): Iterator[Row] = {
-    new InterruptibleIterator(context, split.asInstanceOf[PullRequestPartition].iterator)
+    // new InterruptibleIterator(context, split.asInstanceOf[PullRequestPartition].iterator)
+    null
   }
 }
