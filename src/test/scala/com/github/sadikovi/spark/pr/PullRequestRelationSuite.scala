@@ -143,4 +143,80 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
     relation.schema("deletions").dataType should be (IntegerType)
     relation.schema("changed_files").dataType should be (IntegerType)
   }
+
+  test("pull request source - pulls() validation") {
+    intercept[IllegalArgumentException] {
+      PullRequestSource.pulls("", "repo", 10, None)
+    }
+
+    intercept[IllegalArgumentException] {
+      PullRequestSource.pulls("user", "", 10, None)
+    }
+
+    intercept[IllegalArgumentException] {
+      PullRequestSource.pulls("a/b/c", "repo", 10, None)
+    }
+
+    intercept[IllegalArgumentException] {
+      PullRequestSource.pulls("user", "/a/b/c", 10, None)
+    }
+
+    intercept[IllegalArgumentException] {
+      PullRequestSource.pulls("user", "repo", 0, None)
+    }
+  }
+
+  test("pull request source - pulls() without token") {
+    val request = PullRequestSource.pulls("user", "repo", 7, None)
+    request.method should be ("GET")
+    request.url should be ("https://api.github.com/repos/user/repo/pulls")
+    request.params should be (List(("per_page", "7")))
+    request.headers.toMap.get("Authorization") should be (None)
+  }
+
+  test("pull request source - pulls() with token") {
+    val request = PullRequestSource.pulls("user", "repo", 15, Some("abc123"))
+    request.method should be ("GET")
+    request.url should be ("https://api.github.com/repos/user/repo/pulls")
+    request.params should be (List(("per_page", "15")))
+    request.headers.toMap.get("Authorization") should be (Some("token abc123"))
+  }
+
+  test("pull request source - pull() validation") {
+    intercept[IllegalArgumentException] {
+      PullRequestSource.pull("", "repo", 12345, None)
+    }
+
+    intercept[IllegalArgumentException] {
+      PullRequestSource.pulls("user", "", 12345, None)
+    }
+
+    intercept[IllegalArgumentException] {
+      PullRequestSource.pulls("a/b/c", "repo", 10, None)
+    }
+
+    intercept[IllegalArgumentException] {
+      PullRequestSource.pulls("user", "/a/b/c", 10, None)
+    }
+
+    intercept[IllegalArgumentException] {
+      PullRequestSource.pulls("user", "repo", -1, None)
+    }
+  }
+
+  test("pull request source - pull() with token") {
+    val request = PullRequestSource.pull("user", "repo", 12345, Some("abc123"))
+    request.method should be ("GET")
+    request.url should be ("https://api.github.com/repos/user/repo/pulls/12345")
+    request.params.isEmpty should be (true)
+    request.headers.toMap.get("Authorization") should be (Some("token abc123"))
+  }
+
+  test("pull request source - pull() without token") {
+    val request = PullRequestSource.pull("user", "repo", 12345, None)
+    request.method should be ("GET")
+    request.url should be ("https://api.github.com/repos/user/repo/pulls/12345")
+    request.params.isEmpty should be (true)
+    request.headers.toMap.get("Authorization") should be (None)
+  }
 }

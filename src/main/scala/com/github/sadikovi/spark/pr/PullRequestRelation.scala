@@ -16,12 +16,18 @@
 
 package com.github.sadikovi.spark.pr
 
+import scala.util.control.NonFatal
+
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Row, SQLContext}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.sources.{BaseRelation, TableScan}
 
+import org.json4s.jackson.{JsonMethods => Json}
+
 import org.slf4j.LoggerFactory
+
+import scalaj.http.{Http, HttpRequest}
 
 /**
  * [[PullRequestRelation]] is a table to store GitHub pull requests information, currently
@@ -135,6 +141,89 @@ class PullRequestRelation(
   override def buildScan(): RDD[Row] = {
     // Based on resolved username and repository prepare request to fetch all repositories for the
     // batch size, then partition pull requests across executors, so each url is resolved per task
-    null
+    val response = PullRequestSource.pulls(user, repo, batchSize, token).asString
+    if (!response.isSuccess) {
+      throw new RuntimeException(s"Request failed with code ${response.code}: ${response.body}")
+    }
+
+    val rawData = Json.parse(response.body).values
+    val prs: Seq[PullRequestInfo] = rawData.asInstanceOf[Seq[Map[String, String]]].map { data =>
+      try {
+        val id = data.getOrElse("id", sys.error("Key 'id' does not exist")).toInt
+        val number = data.getOrElse("number", sys.error("Key 'number' does not exist")).toInt
+        val url = data.getOrElse("url", sys.error("Key 'url' does not exist"))
+        val updatedAt = data.getOrElse("updated_at", sys.error("Key 'updated_at' does not exist"))
+        val createdAt = data.getOrElse("created_at", sys.error("Key 'created_at' does not exist"))
+        // if update date does not exist, use create date instead, url should always be defined
+        PullRequestInfo(id, number, url, Option(updatedAt).getOrElse(createdAt))
+      } catch {
+        case NonFatal(err) =>
+          throw new RuntimeException(
+            s"Failed to convert to 'PullRequestInfo', body=${response.body}", err)
+      }
+    }
+    logger.debug(s"Processed ${prs.length} pull requests")
+
+    new PullRequestRDD(sqlContext.sparkContext, prs)
+  }
+}
+
+/**
+ * Generic utilities to work with pull requests and sending requests to GitHub.
+ */
+private[pr] object PullRequestSource {
+  val baseURL = "https://api.github.com"
+
+  /**
+   * Make request to GitHub to return batch of pull requests.
+   * Note that only first page is retrieved.
+   * @param user GitHub username/organization
+   * @param repo repository name
+   * @param batch how many pull requests fetch per page
+   * @param token optional authentication token to increase rate limit
+   * @return HttpRequest
+   */
+  def pulls(
+      user: String,
+      repo: String,
+      batch: Int,
+      token: Option[String]): HttpRequest = {
+    require(user.nonEmpty, "'user' parameter is empty")
+    require(repo.nonEmpty, "'repo' parameter is empty")
+    require(batch > 0, s"Non-positive batch size $batch")
+    require(!user.contains("/"), "'user' parameter contains '/' which will alter URL")
+    require(!repo.contains("/"), "'repo' parameter contains '/' which will alter URL")
+    val url = s"$baseURL/repos/$user/$repo/pulls"
+    val request = Http(url).method("GET").param("per_page", s"$batch")
+    if (token.isDefined) request.header("Authorization", s"token ${token.get}") else request
+  }
+
+  /**
+   * Fetch pull request for a specific url.
+   * @param url fully-qualified URL, comes from JSON field "url"
+   * @param token optional token to increase rate limit
+   * @return HttpRequest
+   */
+  def pull(url: String, token: Option[String]): HttpRequest = {
+    val request = Http(url).method("GET")
+    if (token.isDefined) request.header("Authorization", s"token ${token.get}") else request
+  }
+
+  /**
+   * Fetch pull request for user, repo and number.
+   * @param user GitHub username/organization
+   * @param repo repository name
+   * @param number pull request number
+   * @param token optional token to increase rate limit
+   * @return HttpRequest
+   */
+  def pull(user: String, repo: String, number: Int, token: Option[String]): HttpRequest = {
+    require(user.nonEmpty, "'user' parameter is empty")
+    require(repo.nonEmpty, "'repo' parameter is empty")
+    require(number >= 0, s"Negative pull request number $number")
+    require(!user.contains("/"), "'user' parameter contains '/' which will alter URL")
+    require(!repo.contains("/"), "'repo' parameter contains '/' which will alter URL")
+    val url = s"$baseURL/repos/$user/$repo/pulls/$number"
+    pull(url, token)
   }
 }
