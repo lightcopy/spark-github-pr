@@ -453,7 +453,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
       PullRequestInfo(1, 101, "url", "updatedAt", None, None),
       PullRequestInfo(3, 103, "url", "updatedAt", None, None),
       PullRequestInfo(2, 102, "url", "updatedAt", None, None))
-    val rdd = new PullRequestRDD(spark.sparkContext, data, schema)
+    val rdd = new PullRequestRDD(spark.sparkContext, data, schema, data.length)
     val splits = rdd.getPartitions.map(_.asInstanceOf[PullRequestPartition])
     splits.length should be (data.length)
     splits(0).index should be (0)
@@ -465,7 +465,6 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("pull request rdd - process response body") {
-    val rdd = new PullRequestRDD(spark.sparkContext, Seq.empty, null)
     val schema = StructType(
       StructField("a", StringType) ::
       StructField("b", BooleanType) ::
@@ -474,8 +473,24 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
       | "a": "str",
       | "b": true,
       | "c": 123}""".stripMargin
-    val row = rdd.processResponseBody(schema, body)
+    val row = PullRequestRDD.processResponseBody(schema, body)
     row should be (Row("str", true, 123))
+  }
+
+  test("pull request rdd - invalid number of slices") {
+    intercept[IllegalArgumentException] {
+      PullRequestRDD.slice(Array.empty[Int], 0)
+    }
+  }
+
+  test("pull request rdd - slice seq") {
+    val res = PullRequestRDD.slice(Array(1, 2, 3, 4, 5, 6), 3)
+    res should be (Seq(Seq(1, 2), Seq(3, 4), Seq(5, 6)))
+  }
+
+  test("pull request rdd - slice seq 2") {
+    val res = PullRequestRDD.slice(Array(1, 2, 3, 4, 5, 6), 7)
+    res should be (Seq(Seq(), Seq(1), Seq(2), Seq(3), Seq(4), Seq(5), Seq(6)))
   }
 
   test("list from response - response 5xx failure") {

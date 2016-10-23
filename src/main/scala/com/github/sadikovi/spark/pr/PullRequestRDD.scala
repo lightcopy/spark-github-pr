@@ -17,6 +17,7 @@
 package com.github.sadikovi.spark.pr
 
 import scala.collection.mutable.ArrayBuffer
+import scala.reflect.ClassTag
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{Path => HadoopPath}
@@ -80,7 +81,8 @@ private[pr] class PullRequestPartition(
 private[spark] class PullRequestRDD(
     sc: SparkContext,
     @transient private val data: Seq[PullRequestInfo],
-    private val schema: StructType)
+    private val schema: StructType,
+    private val numSlices: Int)
   extends RDD[Row](sc, Nil) {
 
   // Broadcast Hadoop configuration to access it on each executor. This is similar to HadoopRDD
@@ -89,7 +91,8 @@ private[spark] class PullRequestRDD(
   private def getConf: Configuration = confBroadcast.value.value
 
   override def getPartitions: Array[Partition] = {
-    data.zipWithIndex.map { case (info, i) => new PullRequestPartition(id, i, Seq(info)) }.toArray
+    val slices = PullRequestRDD.slice(data.toArray, numSlices)
+    slices.indices.map { i => new PullRequestPartition(id, i, slices(i)) }.toArray
   }
 
   override def compute(split: Partition, context: TaskContext): Iterator[Row] = {
@@ -109,24 +112,40 @@ private[spark] class PullRequestRDD(
           } else {
             // perform request and save cached data to the file provided
             logInfo(s"Could not find cache for $path, fetching remote data")
-            val response = findPullOrFail(info.url, info.token)
+            val response = PullRequestRDD.findPullOrFail(info.url, info.token)
             Utils.writePersistedCache(fs, path, response.body)
             response.body
           }
         case None =>
           // just perform request, no cache is available on read/write
-          val response = findPullOrFail(info.url, info.token)
+          val response = PullRequestRDD.findPullOrFail(info.url, info.token)
           response.body
       }
 
-      val row = processResponseBody(schema, responseBody)
+      val row = PullRequestRDD.processResponseBody(schema, responseBody)
       buffer.append(row)
     }
     new InterruptibleIterator(context, buffer.toIterator)
   }
+}
+
+private[spark] object PullRequestRDD {
+  /** Slice array into sequence of partition elements */
+  def slice[T: ClassTag](array: Array[T], numSlices: Int): Seq[Seq[T]] = {
+    require(numSlices >= 1, s"Positive number of slices required, found $numSlices slices")
+    def positions(length: Long, numSlices: Int): Iterator[(Int, Int)] = {
+      (0 until numSlices).iterator.map { i =>
+        val start = ((i * length) / numSlices).toInt
+        val end = (((i + 1) * length) / numSlices).toInt
+        (start, end)
+      }
+    }
+    positions(array.length, numSlices).map { case (start, end) =>
+      array.slice(start, end).toSeq }.toSeq
+  }
 
   /** Return response and check http code */
-  private[spark] def findPullOrFail(url: String, token: Option[String]): HttpResponse[String] = {
+  def findPullOrFail(url: String, token: Option[String]): HttpResponse[String] = {
     // $COVERAGE-OFF$ not testing fetching json remotely, TODO: enable in future releases
     val response = HttpUtils.pull(url, token).asString
     if (!response.isSuccess) {
@@ -137,7 +156,7 @@ private[spark] class PullRequestRDD(
   }
 
   /** Process response body as json string and convert it into Spark SQL Row */
-  private[spark] def processResponseBody(schema: StructType, responseBody: String): Row = {
+  def processResponseBody(schema: StructType, responseBody: String): Row = {
     val json = Json.parse(responseBody).values.asInstanceOf[Map[String, Any]]
     Utils.jsonToRow(schema, json)
   }

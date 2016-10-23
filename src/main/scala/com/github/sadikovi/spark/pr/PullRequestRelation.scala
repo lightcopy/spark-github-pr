@@ -49,7 +49,7 @@ class PullRequestRelation(
 
   private val logger = LoggerFactory.getLogger(getClass())
   val minBatchSize = 1
-  val defaultBatchSize = 200
+  val defaultBatchSize = 100
   val maxBatchSize = 1000
 
   // User and repository to fetch, together they create user/repository pair
@@ -160,7 +160,8 @@ class PullRequestRelation(
     // $COVERAGE-OFF$ not testing cache for now, TODO: enable in the future releases
     logger.info(s"List pull requests for $user/$repo")
     val prs = cache.get(CacheKey(user, repo, batchSize))
-    new PullRequestRDD(sqlContext.sparkContext, prs, schema)
+    val sc = sqlContext.sparkContext
+    new PullRequestRDD(sc, prs, schema, sc.defaultParallelism)
     // $COVERAGE-ON$
   }
 
@@ -211,7 +212,7 @@ class PullRequestRelation(
   private[spark] val cache: LoadingCache[CacheKey, Seq[PullRequestInfo]] =
     CacheBuilder.newBuilder().
       maximumSize(100).
-      expireAfterWrite(1, TimeUnit.MINUTES).
+      expireAfterWrite(5, TimeUnit.MINUTES).
       removalListener(onRemovalAction).
       build(pullRequestLoader)
 }
