@@ -30,15 +30,15 @@ import com.github.sadikovi.testutil.{SparkLocal, UnitTestSuite}
 
 class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   override def beforeAll {
-    startSparkContext()
+    startSparkSession()
   }
 
   override def afterAll {
-    stopSparkContext()
+    startSparkSession()
   }
 
   test("fail to extract username") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     val err = intercept[RuntimeException] {
       new PullRequestRelation(sqlContext, Map.empty)
     }
@@ -46,7 +46,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("extract empty username") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     var err = intercept[RuntimeException] {
       new PullRequestRelation(sqlContext, Map("user" -> ""))
     }
@@ -59,7 +59,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("fail to extract repository") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     val err = intercept[RuntimeException] {
       new PullRequestRelation(sqlContext, Map("user" -> "user"))
     }
@@ -67,7 +67,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("extract empty repository") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     var err = intercept[RuntimeException] {
       new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> ""))
     }
@@ -80,7 +80,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("extract username, repository") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     var relation = new PullRequestRelation(sqlContext, Map("user" -> "abc", "repo" -> "def"))
     relation.user should be ("abc")
     relation.repo should be ("def")
@@ -93,7 +93,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("batch size conversion fail") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     var err = intercept[RuntimeException] {
       new PullRequestRelation(sqlContext,
         Map("user" -> "user", "repo" -> "repo", "batch" -> ""))
@@ -114,7 +114,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("batch size out of bound") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     var err = intercept[IllegalArgumentException] {
       new PullRequestRelation(sqlContext,
         Map("user" -> "user", "repo" -> "repo", "batch" -> "0"))
@@ -129,7 +129,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("select default or valid batch size") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     var relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
     relation.batchSize should be (relation.defaultBatchSize)
 
@@ -139,7 +139,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("select token if available") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     var relation = new PullRequestRelation(sqlContext,
       Map("user" -> "user", "repo" -> "repo", "token" -> "abc"))
     relation.authToken should be (Some("abc"))
@@ -150,7 +150,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("check main schema items") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
     relation.schema("id").dataType should be (IntegerType)
     relation.schema("url").dataType should be (StringType)
@@ -426,7 +426,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
       PullRequestInfo(1, 101, "url", "updatedAt", None, None),
       PullRequestInfo(3, 103, "url", "updatedAt", None, None),
       PullRequestInfo(2, 102, "url", "updatedAt", None, None))
-    val rdd = new PullRequestRDD(sc, data, schema)
+    val rdd = new PullRequestRDD(spark.sparkContext, data, schema)
     val splits = rdd.getPartitions.map(_.asInstanceOf[PullRequestPartition])
     splits.length should be (data.length)
     splits(0).index should be (0)
@@ -438,7 +438,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("list from response - response 5xx failure") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
     val err = intercept[RuntimeException] {
       relation.listFromResponse(HttpResponse("Error", 500, Map.empty), None)
@@ -447,7 +447,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("list from response - response 4xx failure") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
     val err = intercept[RuntimeException] {
       relation.listFromResponse(HttpResponse("Error", 404, Map.empty), None)
@@ -456,7 +456,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("list from response - response 3xx failure") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
     // fail on redirects as they are not supported for now
     val err = intercept[RuntimeException] {
@@ -466,7 +466,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("list from response - key does not exist") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
     val err = intercept[RuntimeException] {
       relation.listFromResponse(HttpResponse("[{\"a\": true}]", 200, Map.empty), None)
@@ -476,7 +476,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("list from response - conversion fails") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
     val err = intercept[RuntimeException] {
       relation.listFromResponse(HttpResponse("[{\"id\": true}]", 200, Map.empty), None)
@@ -486,7 +486,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   }
 
   test("list from response - parse into pull request info") {
-    val sqlContext = SQLContext.getOrCreate(sc)
+    val sqlContext = spark.sqlContext
     val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
     val body = """[
       |{

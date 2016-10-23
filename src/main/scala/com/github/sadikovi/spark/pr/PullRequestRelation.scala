@@ -100,6 +100,7 @@ class PullRequestRelation(
       case None => "file:/tmp/.spark-github-pr"
     },
     sqlContext.sparkContext.hadoopConfiguration)
+  logger.info(s"Using directory $cacheDirectory for persisted cache on each executor")
 
   override def schema: StructType = {
     StructType(

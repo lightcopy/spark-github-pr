@@ -17,25 +17,27 @@
 package com.github.sadikovi.testutil
 
 import org.apache.log4j.{Level, Logger}
-import org.apache.spark.{SparkContext, SparkConf}
+import org.apache.spark.sql.SparkSession
 
 /** General Spark base */
 private[testutil] trait SparkBase {
-  @transient private[testutil] var _sc: SparkContext = null
+  @transient private[testutil] var _spark: SparkSession = null
 
-  /** Start (or init) Spark context. */
-  def startSparkContext() {
-    // stop previous Spark context
-    stopSparkContext()
-    _sc = new SparkContext()
+  def createSparkSession(): SparkSession
+
+  /** Start (or create) Spark session */
+  def startSparkSession(): Unit = {
+    stopSparkSession()
+    setLoggingLevel(Level.ERROR)
+    _spark = createSparkSession()
   }
 
-  /** Stop Spark context. */
-  def stopSparkContext() {
-    if (_sc != null) {
-      _sc.stop()
+  /** Stop Spark session */
+  def stopSparkSession(): Unit = {
+    if (_spark != null) {
+      _spark.stop()
     }
-    _sc = null
+    _spark = null
   }
 
   /**
@@ -53,6 +55,6 @@ private[testutil] trait SparkBase {
     Logger.getRootLogger().setLevel(level)
   }
 
-  /** Returns Spark context. */
-  def sc: SparkContext = _sc
+  /** Returns Spark session */
+  def spark: SparkSession = _spark
 }
