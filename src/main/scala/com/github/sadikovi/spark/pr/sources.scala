@@ -155,9 +155,9 @@ private[spark] object Utils {
     }
   }
 
-  /** Write content as UTF-8 String into provided file path, file must not exist prior write */
+  /** Write content as UTF-8 String into provided file path, file is ovewritten on next attempt */
   def writePersistedCache(fs: FileSystem, path: HadoopPath, content: String): Unit = {
-    val out = fs.create(path, false)
+    val out = fs.create(path, true)
     try {
       IOUtils.write(content, out, "UTF-8")
     } finally {
@@ -187,10 +187,7 @@ private[spark] object Utils {
   def attempts(batchSize: Int, maxPageSize: Int): Seq[Int] = {
     require(batchSize > 0, s"Expected positive batch size, found $batchSize")
     require(maxPageSize > 0, s"Expected positive max page size, found $maxPageSize")
-    if (batchSize == maxPageSize) {
-      Seq(maxPageSize)
-    } else {
-      (1 to batchSize / maxPageSize).map { x => maxPageSize } :+ (batchSize % maxPageSize)
-    }
+    val seq = (1 to batchSize / maxPageSize).map { x => maxPageSize } :+ (batchSize % maxPageSize)
+    seq.filter(_ != 0)
   }
 }

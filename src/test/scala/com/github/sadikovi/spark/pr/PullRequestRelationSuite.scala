@@ -589,14 +589,16 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
     filename should be ("pr-123-2000-01-01T21=45=32Z.cache")
   }
 
-  test("utils - fail write into already existing path") {
+  // Potentially dangerous action, because previous content might be newer than current
+  // TODO: investigate this case and maybe add check on hashsum or something like that
+  test("utils - overwrite content of the file that already exists") {
     withTempDir { dir =>
       val fs = dir.getFileSystem(spark.sparkContext.hadoopConfiguration)
       val path = dir.suffix(HadoopPath.SEPARATOR + "test")
       Utils.writePersistedCache(fs, path, "hello")
-      intercept[IOException] {
-        Utils.writePersistedCache(fs, path, "hello2")
-      }
+      Utils.writePersistedCache(fs, path, "hello2")
+      val result = Utils.readPersistedCache(fs, path)
+      result should be ("hello2")
     }
   }
 
@@ -678,6 +680,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
     Utils.attempts(12, 100) should be (Seq(12))
     Utils.attempts(100, 100) should be (Seq(100))
     Utils.attempts(101, 100) should be (Seq(100, 1))
+    Utils.attempts(200, 100) should be (Seq(100, 100))
     Utils.attempts(245, 100) should be (Seq(100, 100, 45))
   }
 }

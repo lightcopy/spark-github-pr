@@ -202,7 +202,7 @@ class PullRequestRelation(
       attempts.zipWithIndex.flatMap { case (partialSize, index) =>
         // page index is 1-based
         val page = index + 1
-        logger.debug(s"Attempt for size $partialSize and $page page")
+        logger.info(s"Attempt for size $partialSize and $page page")
         val response = HttpUtils.pulls(key.user, key.repo, partialSize, page, authToken).asString
         listFromResponse(response, authToken, Some(cacheDirectory))
       }
