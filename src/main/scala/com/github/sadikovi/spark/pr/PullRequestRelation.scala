@@ -49,7 +49,7 @@ class PullRequestRelation(
 
   private val logger = LoggerFactory.getLogger(getClass())
   val minBatchSize = 1
-  val defaultBatchSize = 100
+  val maxPageSize = 100
   val maxBatchSize = 1000
 
   // User and repository to fetch, together they create user/repository pair
@@ -68,7 +68,7 @@ class PullRequestRelation(
   }
   logger.info(s"$user/$repo repository is selected")
 
-  // Size of pull requests batch to preload, this set is used to parallelize work across executors
+  // Size of pull requests batch to list
   private[spark] val batchSize: Int = parameters.get("batch") match {
     case Some(size) => try {
       val resolvedSize = size.toInt
@@ -81,11 +81,11 @@ class PullRequestRelation(
         throw new RuntimeException(
           s"Invalid batch size $size, should be positive integer, see cause for more info", err)
     }
-    case None => defaultBatchSize
+    case None => maxPageSize
   }
   logger.info(s"Batch size $batchSize is selected")
 
-  // authentication token
+  // Authentication token
   private[spark] val authToken: Option[String] = parameters.get("token") match {
     case token @ Some(_) => token
     case None =>
@@ -93,7 +93,7 @@ class PullRequestRelation(
       None
   }
 
-  // persistent cache folder, must be either shared directory on local file system, or HDFS
+  // Persistent cache folder, must be either shared directory on local file system, or HDFS
   // TODO: make evaluation lazy and potentially in `buildScan()`
   private[spark] val cacheDirectory: String = Utils.checkPersistedCacheDir(
     parameters.get("cacheDir") match {
@@ -156,7 +156,7 @@ class PullRequestRelation(
 
   override def buildScan(): RDD[Row] = {
     // Based on resolved username and repository prepare request to fetch all repositories for the
-    // batch size, then partition pull requests across executors, so each url is resolved per task
+    // batch size, then partition pull requests across executors, so each url is resolved per task.
     // $COVERAGE-OFF$ not testing cache for now, TODO: enable in the future releases
     logger.info(s"List pull requests for $user/$repo")
     val prs = cache.get(CacheKey(user, repo, batchSize))
@@ -197,8 +197,15 @@ class PullRequestRelation(
   private val pullRequestLoader = new CacheLoader[CacheKey, Seq[PullRequestInfo]]() {
     override def load(key: CacheKey): Seq[PullRequestInfo] = {
       logger.info(s"Cache miss for key $key, fetching data")
-      val response = HttpUtils.pulls(key.user, key.repo, key.batchSize, authToken).asString
-      listFromResponse(response, authToken, Some(cacheDirectory))
+      val attempts: Seq[Int] = Utils.attempts(key.batchSize, maxPageSize)
+      logger.info(s"Trying to fetch data within $attempts attempts")
+      attempts.zipWithIndex.flatMap { case (partialSize, index) =>
+        // page index is 1-based
+        val page = index + 1
+        logger.debug(s"Attempt for size $partialSize and $page page")
+        val response = HttpUtils.pulls(key.user, key.repo, partialSize, page, authToken).asString
+        listFromResponse(response, authToken, Some(cacheDirectory))
+      }
     }
   }
 
@@ -208,7 +215,7 @@ class PullRequestRelation(
     }
   }
 
-  // Relation cache for listing pull requests, expires after 1 minute
+  // Relation cache for listing pull requests, expires after 5 minutes
   private[spark] val cache: LoadingCache[CacheKey, Seq[PullRequestInfo]] =
     CacheBuilder.newBuilder().
       maximumSize(100).

@@ -136,7 +136,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   test("select default or valid batch size") {
     val sqlContext = spark.sqlContext
     var relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
-    relation.batchSize should be (relation.defaultBatchSize)
+    relation.batchSize should be (relation.maxPageSize)
 
     relation = new PullRequestRelation(sqlContext,
       Map("user" -> "user", "repo" -> "repo", "batch" -> "140"))
@@ -196,39 +196,43 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
 
   test("pull request source - pulls() validation") {
     intercept[IllegalArgumentException] {
-      HttpUtils.pulls("", "repo", 10, None)
+      HttpUtils.pulls("", "repo", 10, 1, None)
     }
 
     intercept[IllegalArgumentException] {
-      HttpUtils.pulls("user", "", 10, None)
+      HttpUtils.pulls("user", "", 10, 1, None)
     }
 
     intercept[IllegalArgumentException] {
-      HttpUtils.pulls("a/b/c", "repo", 10, None)
+      HttpUtils.pulls("a/b/c", "repo", 10, 1, None)
     }
 
     intercept[IllegalArgumentException] {
-      HttpUtils.pulls("user", "/a/b/c", 10, None)
+      HttpUtils.pulls("user", "/a/b/c", 10, 1, None)
     }
 
     intercept[IllegalArgumentException] {
-      HttpUtils.pulls("user", "repo", 0, None)
+      HttpUtils.pulls("user", "repo", 0, 1, None)
+    }
+
+    intercept[IllegalArgumentException] {
+      HttpUtils.pulls("user", "repo", 10, 0, None)
     }
   }
 
   test("pull request source - pulls() without token") {
-    val request = HttpUtils.pulls("user", "repo", 7, None)
+    val request = HttpUtils.pulls("user", "repo", 7, 2, None)
     request.method should be ("GET")
     request.url should be ("https://api.github.com/repos/user/repo/pulls")
-    request.params should be (List(("per_page", "7")))
+    request.params should be (List(("per_page", "7"), ("page", "2")))
     request.headers.toMap.get("Authorization") should be (None)
   }
 
   test("pull request source - pulls() with token") {
-    val request = HttpUtils.pulls("user", "repo", 15, Some("abc123"))
+    val request = HttpUtils.pulls("user", "repo", 15, 1, Some("abc123"))
     request.method should be ("GET")
     request.url should be ("https://api.github.com/repos/user/repo/pulls")
-    request.params should be (List(("per_page", "15")))
+    request.params should be (List(("per_page", "15"), ("page", "1")))
     request.headers.toMap.get("Authorization") should be (Some("token abc123"))
   }
 
@@ -560,6 +564,26 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
     seq.head.updatedAt should be ("2010-10-23T12:52:31Z")
   }
 
+  test("list from response - parse with cache directory") {
+    val sqlContext = spark.sqlContext
+    val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
+    val body = """[
+      |{
+      |  "id": 1,
+      |  "number": 123,
+      |  "url": "url",
+      |  "updated_at": "2010-11-01T09:38:15Z",
+      |  "created_at": "2010-10-23T12:52:31Z"
+      |}]""".stripMargin
+    val seq = relation.listFromResponse(HttpResponse(body, 200, Map.empty), None, Some("/folder"))
+    seq.length should be (1)
+    seq.head.id should be (1)
+    seq.head.number should be (123)
+    seq.head.url should be ("url")
+    seq.head.updatedAt should be ("2010-11-01T09:38:15Z")
+    seq.head.cachePath should be (Some(s"/folder/pr-1-2010-11-01T09=38=15Z.cache"))
+  }
+
   test("utils - persisted filename") {
     val filename = Utils.persistedFilename(123, "2000-01-01T21:45:32Z")
     filename should be ("pr-123-2000-01-01T21=45=32Z.cache")
@@ -634,5 +658,26 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
       }
       err.getMessage.contains("Expected read/write access") should be (true)
     }
+  }
+
+  test("utils - attempts, invalid batch size") {
+    val err = intercept[IllegalArgumentException] {
+      Utils.attempts(0, 1)
+    }
+    err.getMessage.contains("Expected positive batch size") should be (true)
+  }
+
+  test("utils - attempts, invalid max page size") {
+    val err = intercept[IllegalArgumentException] {
+      Utils.attempts(1, 0)
+    }
+    err.getMessage.contains("Expected positive max page size") should be (true)
+  }
+
+  test("utils - attempts") {
+    Utils.attempts(12, 100) should be (Seq(12))
+    Utils.attempts(100, 100) should be (Seq(100))
+    Utils.attempts(101, 100) should be (Seq(100, 1))
+    Utils.attempts(245, 100) should be (Seq(100, 100, 45))
   }
 }

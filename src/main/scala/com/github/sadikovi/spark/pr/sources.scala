@@ -45,22 +45,27 @@ private[spark] object HttpUtils {
    * Note that only first page is retrieved.
    * @param user GitHub username/organization
    * @param repo repository name
-   * @param batch how many pull requests fetch per page
+   * @param pageSize how many pull requests fetch per page
+   * @param pageNumber page number, 1-based
    * @param token optional authentication token to increase rate limit
    * @return HttpRequest
    */
   def pulls(
       user: String,
       repo: String,
-      batch: Int,
+      pageSize: Int,
+      pageNumber: Int,
       token: Option[String]): HttpRequest = {
     require(user.nonEmpty, "'user' parameter is empty")
     require(repo.nonEmpty, "'repo' parameter is empty")
-    require(batch > 0, s"Non-positive batch size $batch")
+    require(pageSize > 0, s"Non-positive batch size $pageSize")
+    require(pageNumber > 0, s"Non-positive page number $pageNumber")
     require(!user.contains("/"), "'user' parameter contains '/' which will alter URL")
     require(!repo.contains("/"), "'repo' parameter contains '/' which will alter URL")
     val url = s"$baseURL/repos/$user/$repo/pulls"
-    val request = Http(url).method("GET").param("per_page", s"$batch")
+    val request = Http(url).method("GET").
+      param("per_page", s"$pageSize").
+      param("page", s"$pageNumber")
     if (token.isDefined) request.header("Authorization", s"token ${token.get}") else request
   }
 
@@ -176,5 +181,16 @@ private[spark] object Utils {
   def checkPersistedCacheDir(dir: String, conf: Configuration): String = {
     val path = new HadoopPath(dir)
     checkPersistedCacheDir(path.getFileSystem(conf), path).toString
+  }
+
+  /** List of attempts of either 'maxPageSize' size or 'batchSize % maxPageSize' size */
+  def attempts(batchSize: Int, maxPageSize: Int): Seq[Int] = {
+    require(batchSize > 0, s"Expected positive batch size, found $batchSize")
+    require(maxPageSize > 0, s"Expected positive max page size, found $maxPageSize")
+    if (batchSize == maxPageSize) {
+      Seq(maxPageSize)
+    } else {
+      (1 to batchSize / maxPageSize).map { x => maxPageSize } :+ (batchSize % maxPageSize)
+    }
   }
 }
