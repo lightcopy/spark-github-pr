@@ -167,7 +167,8 @@ class PullRequestRelation(
   /** List pull requests from response, open for testing */
   private[spark] def listFromResponse(
       response: HttpResponse[String],
-      token: Option[String]): Seq[PullRequestInfo] = {
+      token: Option[String],
+      cacheDirectory: Option[String] = None): Seq[PullRequestInfo] = {
     if (!response.isSuccess) {
       throw new RuntimeException(s"Request failed with code ${response.code}: ${response.body}")
     }
@@ -180,8 +181,10 @@ class PullRequestRelation(
         val url = Utils.valueForKey[String](data, "url")
         val updatedAt = Utils.valueForKey[String](data, "updated_at")
         val createdAt = Utils.valueForKey[String](data, "created_at")
+        val date = Option(updatedAt).getOrElse(createdAt)
+        val dir = cacheDirectory.map { path => s"$path/${Utils.persistedFilename(id, date)}" }
         // if update date does not exist, use create date instead, url should always be defined
-        PullRequestInfo(id, number, url, Option(updatedAt).getOrElse(createdAt), token, None)
+        PullRequestInfo(id, number, url, date, token, dir)
       } catch {
         case NonFatal(err) =>
           throw new RuntimeException(
