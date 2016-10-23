@@ -18,12 +18,17 @@ package com.github.sadikovi.spark.pr
 
 import scala.collection.mutable.ArrayBuffer
 
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.{Path => HadoopPath}
+
 import org.apache.spark.{InterruptibleIterator, Partition, SparkContext, TaskContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
 
 import org.json4s.jackson.{JsonMethods => Json}
+
+import scalaj.http.HttpResponse
 
 /**
  * [[PullRequestInfo]] stores partial information about pull request that is used in partiitoning.
@@ -33,7 +38,8 @@ private[pr] case class PullRequestInfo(
     number: Int,
     url: String,
     updatedAt: String,
-    token: Option[String]) {
+    token: Option[String],
+    cachePath: Option[String]) {
   override def equals(other: Any): Boolean = other match {
     case that: PullRequestInfo =>
       this.id == that.id && this.number == that.number
@@ -77,6 +83,11 @@ private[spark] class PullRequestRDD(
     private val schema: StructType)
   extends RDD[Row](sc, Nil) {
 
+  // Broadcast Hadoop configuration to access it on each executor. This is similar to HadoopRDD
+  private val confBroadcast = sc.broadcast(new SerializableConfiguration(sc.hadoopConfiguration))
+
+  private def getConf: Configuration = confBroadcast.value.value
+
   override def getPartitions: Array[Partition] = {
     data.zipWithIndex.map { case (info, i) => new PullRequestPartition(id, i, Seq(info)) }.toArray
   }
@@ -85,16 +96,47 @@ private[spark] class PullRequestRDD(
     val buffer = new ArrayBuffer[Row]()
     for (info <- split.asInstanceOf[PullRequestPartition].iterator) {
       // perform request, convert result int row and append to buffer
+      // check if persisted cache is available for into path
       logInfo(s"Processing $info")
-      val response = HttpUtils.pull(info.url, info.token).asString
-      if (!response.isSuccess) {
-        throw new RuntimeException(s"Request failed with code ${response.code}: ${response.body}")
+      val responseBody = info.cachePath match {
+        case Some(resolvedPath) =>
+          val path = new HadoopPath(info.cachePath.get)
+          val fs = path.getFileSystem(getConf)
+          if (fs.exists(path)) {
+            // read cached data from path
+            logInfo(s"Found $path, loading data from cache")
+            Utils.readPersistedCache(fs, path)
+          } else {
+            // perform request and save cached data to the file provided
+            logInfo(s"Could not find cache for $path, fetching remote data")
+            val response = findPullOrFail(info.url, info.token)
+            Utils.writePersistedCache(fs, path, response.body)
+            response.body
+          }
+        case None =>
+          // just perform request, no cache is available on read/write
+          val response = findPullOrFail(info.url, info.token)
+          response.body
       }
 
-      val json = Json.parse(response.body).values.asInstanceOf[Map[String, Any]]
-      val row = Utils.jsonToRow(schema, json)
+      val row = processResponseBody(schema, responseBody)
       buffer.append(row)
     }
     new InterruptibleIterator(context, buffer.toIterator)
+  }
+
+  /** Return response and check http code */
+  private[spark] def findPullOrFail(url: String, token: Option[String]): HttpResponse[String] = {
+    val response = HttpUtils.pull(url, token).asString
+    if (!response.isSuccess) {
+      throw new RuntimeException(s"Request failed with code ${response.code}: ${response.body}")
+    }
+    response
+  }
+
+  /** Process response body as json string and convert it into Spark SQL Row */
+  private[spark] def processResponseBody(schema: StructType, responseBody: String): Row = {
+    val json = Json.parse(responseBody).values.asInstanceOf[Map[String, Any]]
+    Utils.jsonToRow(schema, json)
   }
 }

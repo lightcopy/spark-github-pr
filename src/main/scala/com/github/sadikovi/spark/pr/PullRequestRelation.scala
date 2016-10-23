@@ -93,6 +93,14 @@ class PullRequestRelation(
       None
   }
 
+  // persistent cache folder, must be either shared directory on local file system, or HDFS
+  private[spark] val cacheDirectory: String = Utils.checkPersistedCacheDir(
+    parameters.get("cacheDir") match {
+      case Some(directory) => directory
+      case None => "file:/tmp/.spark-github-pr"
+    },
+    sqlContext.sparkContext.hadoopConfiguration)
+
   override def schema: StructType = {
     StructType(
       StructField("id", IntegerType, false) ::
@@ -179,7 +187,7 @@ class PullRequestRelation(
         val updatedAt = Utils.valueForKey[String](data, "updated_at")
         val createdAt = Utils.valueForKey[String](data, "created_at")
         // if update date does not exist, use create date instead, url should always be defined
-        PullRequestInfo(id, number, url, Option(updatedAt).getOrElse(createdAt), token)
+        PullRequestInfo(id, number, url, Option(updatedAt).getOrElse(createdAt), token, None)
       } catch {
         case NonFatal(err) =>
           throw new RuntimeException(

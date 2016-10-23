@@ -16,11 +16,18 @@
 
 package com.github.sadikovi.spark.pr
 
+import java.io.{FileNotFoundException, ObjectInputStream, ObjectOutputStream}
 import java.text.SimpleDateFormat
 import java.sql.Timestamp
 
 import scala.math.BigInt
 import scala.reflect.ClassTag
+
+import org.apache.commons.io.IOUtils
+
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.{FileSystem, Path => HadoopPath}
+import org.apache.hadoop.fs.permission.{FsAction, FsPermission}
 
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
@@ -126,5 +133,73 @@ private[spark] object Utils {
       }
     }
     Row.fromSeq(resolvedValues)
+  }
+
+  /** Filename for persisted cache */
+  def persistedFilename(id: Int, date: String): String = {
+    val dateKey = date.replaceAllLiterally(":", "=").replaceAllLiterally(" ", "=")
+    s"pr-$id-$dateKey.cache"
+  }
+
+  /** Read content as String from provided file */
+  def readPersistedCache(fs: FileSystem, path: HadoopPath): String = {
+    val in = fs.open(path)
+    try {
+      // assume that string is in UTF-8 for now
+      IOUtils.toString(in, "UTF-8")
+    } finally {
+      if (in != null) {
+        in.close()
+      }
+    }
+  }
+
+  /** Write content as String into provided file path, file must not exist prior write */
+  def writePersistedCache(fs: FileSystem, path: HadoopPath, content: String): Unit = {
+    val out = fs.create(path, false)
+    try {
+      IOUtils.write(content, out, "UTF-8")
+    } finally {
+      if (out != null) {
+        out.close()
+      }
+    }
+  }
+
+  /** Check if directory exists or create it, verify that read/write access granted */
+  private def checkPersistedCacheDir(fs: FileSystem, directory: HadoopPath): HadoopPath = {
+    if (!fs.exists(directory)) {
+      fs.mkdirs(directory, FsPermission.valueOf("drw-rw-rw-"))
+    }
+    val status = fs.getFileStatus(directory)
+    require(status.isDirectory, s"$directory is not a directory")
+    require(status.getPermission.getUserAction.implies(FsAction.READ_WRITE),
+      s"Expected read/write access for $directory")
+    status.getPath
+  }
+
+  /** Wrapper to get verified path as String */
+  def checkPersistedCacheDir(dir: String, conf: Configuration): String = {
+    val path = new HadoopPath(dir)
+    checkPersistedCacheDir(path.getFileSystem(conf), path).toString
+  }
+}
+
+/**
+ * Serializable hadoop configuration. Clone of `org.apache.spark.util.SerializableConfiguration`,
+ * since it cannot be reused outside `spark` package.
+ */
+private[spark] class SerializableConfiguration(
+    @transient var value: Configuration)
+  extends Serializable {
+
+  private def writeObject(out: ObjectOutputStream): Unit = {
+    out.defaultWriteObject()
+    value.write(out)
+  }
+
+  private def readObject(in: ObjectInputStream): Unit = {
+    value = new Configuration(false)
+    value.readFields(in)
   }
 }
