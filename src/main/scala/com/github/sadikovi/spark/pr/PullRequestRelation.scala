@@ -197,7 +197,7 @@ class PullRequestRelation(
     override def load(key: CacheKey): Seq[PullRequestInfo] = {
       logger.info(s"Cache miss for key $key, fetching data")
       val response = HttpUtils.pulls(key.user, key.repo, key.batchSize, authToken).asString
-      listFromResponse(response, authToken)
+      listFromResponse(response, authToken, Some(cacheDirectory))
     }
   }
 

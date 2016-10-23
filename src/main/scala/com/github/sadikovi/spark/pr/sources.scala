@@ -163,7 +163,7 @@ private[spark] object Utils {
   /** Check if directory exists or create it, verify that read/write access granted */
   private def checkPersistedCacheDir(fs: FileSystem, directory: HadoopPath): HadoopPath = {
     if (!fs.exists(directory)) {
-      fs.mkdirs(directory, FsPermission.valueOf("drw-rw-rw-"))
+      fs.mkdirs(directory, FsPermission.valueOf("drwxrwxrwx"))
     }
     val status = fs.getFileStatus(directory)
     require(status.isDirectory, s"$directory is not a directory")
