@@ -198,7 +198,7 @@ class PullRequestRelation(
     override def load(key: CacheKey): Seq[PullRequestInfo] = {
       logger.info(s"Cache miss for key $key, fetching data")
       val attempts: Seq[Int] = Utils.attempts(key.batchSize, maxPageSize)
-      logger.info(s"Trying to fetch data within $attempts attempts")
+      logger.info(s"Trying to fetch data within ${attempts.length} attempts")
       attempts.zipWithIndex.flatMap { case (partialSize, index) =>
         // page index is 1-based
         val page = index + 1
@@ -216,6 +216,7 @@ class PullRequestRelation(
   }
 
   // Relation cache for listing pull requests, expires after 5 minutes
+  // TODO: make cache global
   private[spark] val cache: LoadingCache[CacheKey, Seq[PullRequestInfo]] =
     CacheBuilder.newBuilder().
       maximumSize(100).
