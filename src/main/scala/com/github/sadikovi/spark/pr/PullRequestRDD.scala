@@ -127,11 +127,13 @@ private[spark] class PullRequestRDD(
 
   /** Return response and check http code */
   private[spark] def findPullOrFail(url: String, token: Option[String]): HttpResponse[String] = {
+    // $COVERAGE-OFF$ not testing fetching json remotely, TODO: enable in future releases
     val response = HttpUtils.pull(url, token).asString
     if (!response.isSuccess) {
       throw new RuntimeException(s"Request failed with code ${response.code}: ${response.body}")
     }
     response
+    // $COVERAGE-ON$
   }
 
   /** Process response body as json string and convert it into Spark SQL Row */

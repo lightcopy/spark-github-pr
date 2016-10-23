@@ -16,10 +16,14 @@
 
 package com.github.sadikovi.spark.pr
 
+import java.io.IOException
 import java.math.BigInteger
 import java.sql.Timestamp
 
 import scala.math.BigInt
+
+import org.apache.hadoop.fs.{Path => HadoopPath}
+import org.apache.hadoop.fs.permission.FsPermission
 
 import org.apache.spark.sql.{Row, SQLContext}
 import org.apache.spark.sql.types._
@@ -27,6 +31,7 @@ import org.apache.spark.sql.types._
 import scalaj.http.HttpResponse
 
 import com.github.sadikovi.testutil.{SparkLocal, UnitTestSuite}
+import com.github.sadikovi.testutil.implicits._
 
 class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   override def beforeAll {
@@ -147,6 +152,28 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
     relation = new PullRequestRelation(sqlContext,
       Map("user" -> "user", "repo" -> "repo"))
     relation.authToken should be (None)
+  }
+
+  test("verify cache directory") {
+    val sqlContext = spark.sqlContext
+    var relation = new PullRequestRelation(sqlContext,
+      Map("user" -> "user", "repo" -> "repo", "cacheDir" -> "file:/tmp/.spark-github-pr"))
+    relation.cacheDirectory should be ("file:/tmp/.spark-github-pr")
+  }
+
+  test("create and verify cache directory") {
+    val sqlContext = spark.sqlContext
+    withTempDir { dir =>
+      var relation = new PullRequestRelation(sqlContext,
+        Map("user" -> "user", "repo" -> "repo", "cacheDir" -> s"$dir/test"))
+      relation.cacheDirectory should be (s"file:$dir/test")
+    }
+  }
+
+  test("test DefaultSource") {
+    val source = new DefaultSource()
+    val relation = source.createRelation(spark.sqlContext, Map("user" -> "user", "repo" -> "repo"))
+    relation.isInstanceOf[PullRequestRelation] should be (true)
   }
 
   test("check main schema items") {
@@ -437,6 +464,20 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
     splits(2).info.length should be (1)
   }
 
+  test("pull request rdd - process response body") {
+    val rdd = new PullRequestRDD(spark.sparkContext, Seq.empty, null)
+    val schema = StructType(
+      StructField("a", StringType) ::
+      StructField("b", BooleanType) ::
+      StructField("c", IntegerType) :: Nil)
+    val body = """{
+      | "a": "str",
+      | "b": true,
+      | "c": 123}""".stripMargin
+    val row = rdd.processResponseBody(schema, body)
+    row should be (Row("str", true, 123))
+  }
+
   test("list from response - response 5xx failure") {
     val sqlContext = spark.sqlContext
     val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
@@ -502,5 +543,81 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
     seq.head.number should be (100)
     seq.head.url should be ("url")
     seq.head.updatedAt should be ("2010-10-23T12:52:31Z")
+  }
+
+  test("utils - persisted filename") {
+    val filename = Utils.persistedFilename(123, "2000-01-01T21:45:32Z")
+    filename should be ("pr-123-2000-01-01T21=45=32Z.cache")
+  }
+
+  test("utils - fail write into already existing path") {
+    withTempDir { dir =>
+      val fs = dir.getFileSystem(spark.sparkContext.hadoopConfiguration)
+      val path = dir.suffix(HadoopPath.SEPARATOR + "test")
+      Utils.writePersistedCache(fs, path, "hello")
+      intercept[IOException] {
+        Utils.writePersistedCache(fs, path, "hello2")
+      }
+    }
+  }
+
+  test("utils - read/write persisted cache") {
+    withTempDir { dir =>
+      val fs = dir.getFileSystem(spark.sparkContext.hadoopConfiguration)
+      val path = dir.suffix(HadoopPath.SEPARATOR + "test")
+      Utils.writePersistedCache(fs, path, "hello")
+      val result = Utils.readPersistedCache(fs, path)
+      result should be ("hello")
+    }
+  }
+
+  test("utils - read non-existent file") {
+    withTempDir { dir =>
+      val fs = dir.getFileSystem(spark.sparkContext.hadoopConfiguration)
+      val path = dir.suffix(HadoopPath.SEPARATOR + "test")
+      intercept[IOException] {
+        Utils.readPersistedCache(fs, path)
+      }
+    }
+  }
+
+  test("utils - check persisted cache directory") {
+    withTempDir { dir =>
+      val path = dir.toString
+      val fqn = Utils.checkPersistedCacheDir(path, spark.sparkContext.hadoopConfiguration)
+      fqn should be (s"file:$path")
+    }
+  }
+
+  test("utils - check persisted cache non-existent directory") {
+    withTempDir { dir =>
+      val path = dir.toString / "test"
+      val fqn = Utils.checkPersistedCacheDir(path, spark.sparkContext.hadoopConfiguration)
+      fqn should be (s"file:$path")
+    }
+  }
+
+  test("utils - fail to check persisted cache for file") {
+    withTempDir { dir =>
+      val path = dir.toString / "test"
+      val fs = dir.getFileSystem(spark.sparkContext.hadoopConfiguration)
+      fs.createNewFile(new HadoopPath(path))
+      val err = intercept[IllegalArgumentException] {
+        Utils.checkPersistedCacheDir(path, spark.sparkContext.hadoopConfiguration)
+      }
+      err.getMessage.contains("not a directory") should be (true)
+    }
+  }
+
+  test("utils - fail with wrong permissions on cache directory") {
+    withTempDir { dir =>
+      val path = dir.toString / "test"
+      val fs = dir.getFileSystem(spark.sparkContext.hadoopConfiguration)
+      fs.mkdirs(new HadoopPath(path), FsPermission.valueOf("dr--r--r--"))
+      val err = intercept[IllegalArgumentException] {
+        Utils.checkPersistedCacheDir(path, spark.sparkContext.hadoopConfiguration)
+      }
+      err.getMessage.contains("Expected read/write access") should be (true)
+    }
   }
 }
