@@ -12,7 +12,9 @@ requests/hour constraint.
 Most of JSON keys are supported, see schema [here](./src/main/scala/com/github/sadikovi/spark/pr/PullRequestRelation.scala#L106),
 here is an example output for subset of columns you might see:
 ```sh
-scala> df.select("number", "title", "state", "base.repo.full_name", "user.login", "commits", "additions", "deletions")
+scala> df.select("number", "title", "state", "base.repo.full_name", "user.login",
+  "commits", "additions", "deletions")
+
 +------+--------------------+-----+------------+------------+-------+---------+---------+
 |number|               title|state|   full_name|       login|commits|additions|deletions|
 +------+--------------------+-----+------------+------------+-------+---------+---------+
