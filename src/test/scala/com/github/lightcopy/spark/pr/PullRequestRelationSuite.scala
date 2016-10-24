@@ -20,6 +20,7 @@ import java.io.IOException
 import java.math.BigInteger
 import java.sql.Timestamp
 
+import scala.io.Source
 import scala.math.BigInt
 
 import org.apache.hadoop.fs.{Path => HadoopPath}
@@ -30,10 +31,10 @@ import org.apache.spark.sql.types._
 
 import scalaj.http.HttpResponse
 
-import com.github.lightcopy.testutil.{SparkLocal, UnitTestSuite}
+import com.github.lightcopy.testutil.{HttpTest, SparkLocal, UnitTestSuite}
 import com.github.lightcopy.testutil.implicits._
 
-class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
+class PullRequestRelationSuite extends UnitTestSuite with SparkLocal with HttpTest {
   override def beforeAll {
     startSparkSession()
   }
@@ -479,6 +480,102 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
       | "c": 123}""".stripMargin
     val row = PullRequestRDD.processResponseBody(schema, body)
     row should be (Row("str", true, 123))
+  }
+
+  test("pull request rdd - findPullOrFail, error 500") {
+    makeRequest { case (request, response) =>
+      response.setContentType("application/json; charset=utf-8")
+      response.setStatus(500)
+      response.getWriter.print("{\"message\": \"Server error\"}")
+    } { url =>
+      val err = intercept[RuntimeException] {
+        PullRequestRDD.findPullOrFail(url, None)
+      }
+      err.getMessage.contains("Request failed with code 500")
+    }
+  }
+
+  test("pull request rdd - findPullOrFail, error 400") {
+    makeRequest { case (request, response) =>
+      response.setContentType("application/json; charset=utf-8")
+      response.setStatus(400)
+      response.getWriter.print("{\"message\": \"Request error\"}")
+    } { url =>
+      val err = intercept[RuntimeException] {
+        PullRequestRDD.findPullOrFail(url, None)
+      }
+      err.getMessage.contains("Request failed with code 400")
+    }
+  }
+
+  test("pull request rdd - findPullOrFail, success 200") {
+    makeRequest { case (request, response) =>
+      response.setContentType("application/json; charset=utf-8")
+      response.setStatus(200)
+      response.getWriter.print("{\"message\": \"All good\"}")
+    } { url =>
+      val response = PullRequestRDD.findPullOrFail(url, None)
+      response.body should be ("{\"message\": \"All good\"}")
+    }
+  }
+
+  test("pull request rdd - compute, no cache") {
+    makeRequest { case (request, response) =>
+      response.setContentType("application/json; charset=utf-8")
+      response.setStatus(200)
+      response.getWriter.print("{\"a\": \"str\", \"b\": 1}")
+    } { url =>
+      val schema = StructType(StructField("a", StringType) :: StructField("b", IntegerType):: Nil)
+      val data = Seq(
+        PullRequestInfo(1, 100, url, "2000-01-01T00:00:00Z", None, None),
+        PullRequestInfo(2, 200, url, "2000-01-01T00:00:00Z", None, None))
+      val rdd = new PullRequestRDD(spark.sparkContext, data, schema, 2)
+      rdd.collect should be (Array(Row("str", 1), Row("str", 1)))
+    }
+  }
+
+  test("pull request rdd - compute, read remote, write cache") {
+    withTempDir { dir =>
+      makeRequest { case (request, response) =>
+        response.setContentType("application/json; charset=utf-8")
+        response.setStatus(200)
+        response.getWriter.print("{\"a\": \"str\", \"b\": 1}")
+      } { url =>
+        val schema = StructType(StructField("a", StringType) :: StructField("b", IntegerType):: Nil)
+        val data = Seq(
+          PullRequestInfo(1, 100, url, "2000-01-01T00:00:00Z", None,
+            Some(dir.suffix("/1").toString)),
+          PullRequestInfo(2, 200, url, "2000-01-01T00:00:00Z", None,
+            Some(dir.suffix("/2").toString))
+        )
+        val rdd = new PullRequestRDD(spark.sparkContext, data, schema, 2)
+        rdd.collect should be (Array(Row("str", 1), Row("str", 1)))
+        // check cache
+
+        val json1 = Source.fromFile(dir.suffix("/1").toString).getLines.next
+        val json2 = Source.fromFile(dir.suffix("/2").toString).getLines.next
+        json1 should be ("{\"a\": \"str\", \"b\": 1}")
+        json2 should be ("{\"a\": \"str\", \"b\": 1}")
+      }
+    }
+  }
+
+  test("pull request rdd - compute, read cache") {
+    withTempDir { dir =>
+      val fs = dir.getFileSystem(spark.sparkContext.hadoopConfiguration)
+      Utils.writePersistedCache(fs, dir.suffix("/1"), "{\"a\": \"str1\", \"b\": 1}")
+      Utils.writePersistedCache(fs, dir.suffix("/2"), "{\"a\": \"str2\", \"b\": 2}")
+
+      val schema = StructType(StructField("a", StringType) :: StructField("b", IntegerType):: Nil)
+      val data = Seq(
+        PullRequestInfo(1, 100, "localhost:0", "2000-01-01T00:00:00Z", None,
+          Some(dir.suffix("/1").toString)),
+        PullRequestInfo(2, 200, "localhost:0", "2000-01-01T00:00:00Z", None,
+          Some(dir.suffix("/2").toString))
+      )
+      val rdd = new PullRequestRDD(spark.sparkContext, data, schema, 2)
+      rdd.collect should be (Array(Row("str1", 1), Row("str2", 2)))
+    }
   }
 
   test("pull request rdd - invalid number of slices") {

@@ -27,7 +27,8 @@ spIgnoreProvided := true
 sparkComponents := Seq("sql")
 
 libraryDependencies ++= Seq(
-  "org.scalatest" %% "scalatest" % "2.2.4" % "test"
+  "org.scalatest" %% "scalatest" % "2.2.4" % "test",
+  "org.eclipse.jetty" % "jetty-server" % "8.1.19.v20160209" % "test"
 )
 
 libraryDependencies ++= Seq(
