@@ -9,7 +9,7 @@ Package allows to query GitHub API v3 to fetch pull request information. Launche
 driver to list available pull requests, and creates tasks with pull requests details to execute. PRs
 are cached in `cacheDir` value to save rate limit. It is recommended to use token to remove 60
 requests/hour constraint.
-Most of JSON keys are supported, see schema [here](./src/main/scala/com/github/sadikovi/spark/pr/PullRequestRelation.scala#L106),
+Most of JSON keys are supported, see schema [here](./src/main/scala/com/github/lightcopy/spark/pr/PullRequestRelation.scala#L106),
 here is an example output for subset of columns you might see:
 ```sh
 scala> df.select("number", "title", "state", "base.repo.full_name", "user.login",
@@ -28,16 +28,16 @@ scala> df.select("number", "title", "state", "base.repo.full_name", "user.login"
 ## Requirements
 | Spark version | spark-github-pr latest version |
 |---------------|--------------------------------|
-| 1.6.x | [1.0.0](http://spark-packages.org/package/sadikovi/spark-github-pr) |
-| 2.x.x | [1.0.0](http://spark-packages.org/package/sadikovi/spark-github-pr) |
+| 1.6.x | [1.0.0](http://spark-packages.org/package/lightcopy/spark-github-pr) |
+| 2.x.x | [1.0.0](http://spark-packages.org/package/lightcopy/spark-github-pr) |
 
 ## Linking
 The spark-github-pr package can be added to Spark by using the `--packages` command line option.
 For example, run this to include it when starting the spark shell:
 ```shell
- $SPARK_HOME/bin/spark-shell --packages sadikovi:spark-github-pr:1.0.0-s_2.10
+ $SPARK_HOME/bin/spark-shell --packages lightcopy:spark-github-pr:1.0.0-s_2.10
 ```
-Change to `sadikovi:spark-github-pr:1.0.0-s_2.11` for Scala 2.11.x
+Change to `lightcopy:spark-github-pr:1.0.0-s_2.11` for Scala 2.11.x
 
 ### Options
 Currently supported options:
@@ -55,18 +55,18 @@ be shared folder on local file system or directory on HDFS.
 
 ### Scala API
 ```scala
-val df = sqlContext.read.format("com.github.sadikovi.spark.pr").
+val df = sqlContext.read.format("com.github.lightcopy.spark.pr").
   option("user", "apache").option("repo", "spark").load().
   select("number", "title", "state", "base.repo.full_name", "user.login", "commits")
 
 // You can also specify batch size for number of pull requests to fetch
-val df = sqlContext.read.format("com.github.sadikovi.spark.pr").
+val df = sqlContext.read.format("com.github.lightcopy.spark.pr").
   option("user", "apache").option("repo", "spark").option("batch", "52").load()
 ```
 
 ### Python API
 ```python
-df = sqlContext.read.format("com.github.sadikovi.spark.pr").
+df = sqlContext.read.format("com.github.lightcopy.spark.pr").
   option("user", "apache").option("repo", "spark")load()
 
 res = df.where("commits > 10")
@@ -75,7 +75,7 @@ res = df.where("commits > 10")
 ### SQL API
 ```sql
 CREATE TEMPORARY TABLE prs
-USING com.github.sadikovi.spark.pr
+USING com.github.lightcopy.spark.pr
 OPTIONS (user "apache", repo "spark");
 
 SELECT number, title FROM prs LIMIT 10;

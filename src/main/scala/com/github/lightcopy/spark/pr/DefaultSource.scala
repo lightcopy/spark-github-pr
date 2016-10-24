@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 sadikovi
+ * Copyright 2016 Lightcopy
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,20 +14,19 @@
  * limitations under the License.
  */
 
-package com.github.sadikovi.testutil
+package com.github.lightcopy.spark.pr
 
-import java.io.File
+import org.apache.spark.sql.SQLContext
+import org.apache.spark.sql.sources.{BaseRelation, RelationProvider}
 
-import org.scalatest._
-
-package object implicits {
-  implicit class PathBuilder(path: String) {
-    def /(suffix: String): String = path + File.separator + suffix
-
-    def `:`(append: String): String = path + File.pathSeparator + append
+/**
+ * Default source provider for GitHub PR datasource.
+ * Schema inferrence is not supported for now.
+ */
+class DefaultSource extends RelationProvider {
+  override def createRelation(
+      sqlContext: SQLContext,
+      parameters: Map[String, String]): BaseRelation = {
+    new PullRequestRelation(sqlContext, parameters)
   }
 }
-
-/** abstract general testing class */
-abstract class UnitTestSuite extends FunSuite with Matchers with OptionValues with Inside
-  with Inspectors with TestBase with BeforeAndAfterAll with BeforeAndAfter

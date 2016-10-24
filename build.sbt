@@ -1,6 +1,6 @@
 name := "spark-github-pr"
 
-organization := "com.github.sadikovi"
+organization := "com.github.lightcopy"
 
 scalaVersion := "2.10.5"
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 sadikovi
+ * Copyright 2016 Lightcopy
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.github.sadikovi.spark.pr
+package com.github.lightcopy.spark.pr
 
 import java.io.IOException
 import java.math.BigInteger
@@ -30,8 +30,8 @@ import org.apache.spark.sql.types._
 
 import scalaj.http.HttpResponse
 
-import com.github.sadikovi.testutil.{SparkLocal, UnitTestSuite}
-import com.github.sadikovi.testutil.implicits._
+import com.github.lightcopy.testutil.{SparkLocal, UnitTestSuite}
+import com.github.lightcopy.testutil.implicits._
 
 class PullRequestRelationSuite extends UnitTestSuite with SparkLocal {
   override def beforeAll {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 sadikovi
+ * Copyright 2016 Lightcopy
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.github.sadikovi.testutil
+package com.github.lightcopy.testutil
 
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.sql.SparkSession
