@@ -48,8 +48,7 @@ Currently supported options:
 | `repo` | `1.0.0` | _spark_ | GitHub repository name for provided user
 | `batch` | `1.0.0` | _100_ | number of pull requests to fetch, default is 100 (single page), must be >= 1 and <= 1000
 | `token` | `1.0.0` | _auth_token_ | authentication token to increase rate limit from 60 to 5000, see [GitHub Auth for more info](https://developer.github.com/v3/#oauth2-token-sent-in-a-header)
-| `cacheDir` | `1.0.0` | _file:/tmp/.spark-github-pr_ | directory to store cached pull requests information, currently required to
-be shared folder on local file system or directory on HDFS.
+| `cacheDir` | `1.0.0` | _file:/tmp/.spark-github-pr_ | directory to store cached pull requests information, currently required to be shared folder on local file system or directory on HDFS.
 
 ## Example
 
