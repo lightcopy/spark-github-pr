@@ -52,19 +52,25 @@ class PullRequestRelation(
   val maxPageSize = 100
   val maxBatchSize = 1000
 
+  val defaultUser = "apache"
+  val defaultRepo = "spark"
+  val defaultBatchSize = 25 // this is an arbitrary number, should be less than 60
+
   // User and repository to fetch, together they create user/repository pair
   private[spark] val user: String = parameters.get("user") match {
     case Some(username) if username.trim.nonEmpty => username.trim
-    case other => sys.error(
-      "Expected 'user' option, none/empty provided. " +
-      "'user' option is either GitHub username or organization name")
+    case Some(other) => sys.error(
+      "Expected non-empty 'user' option, found empty value. 'user' option is either GitHub " +
+      s"username or organization name, default value is $defaultUser")
+    case None => defaultUser
   }
 
   private[spark] val repo: String = parameters.get("repo") match {
     case Some(repository) if repository.trim.nonEmpty => repository.trim
-    case other => sys.error(
-      "Expected 'repo' option, none/empty provided. " +
-      "'repo' options is repository name without username prefix")
+    case Some(other) => sys.error(
+      "Expected non-empty 'repo' option, found empty value. 'repo' option is repository name " +
+      s"without username prefix, default value is $defaultRepo")
+    case None => defaultRepo
   }
   logger.info(s"$user/$repo repository is selected")
 
@@ -81,7 +87,7 @@ class PullRequestRelation(
         throw new RuntimeException(
           s"Invalid batch size $size, should be positive integer, see cause for more info", err)
     }
-    case None => maxPageSize
+    case None => defaultBatchSize
   }
   logger.info(s"Batch size $batchSize is selected")
 
