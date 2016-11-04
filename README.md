@@ -54,6 +54,10 @@ Currently supported options:
 
 ### Scala API
 ```scala
+// Load default number of pull requests from apache/spark
+val df = sqlContext.read.format("com.github.lightcopy.spark.pr").load().
+  select("number", "title", "user.login")
+
 val df = sqlContext.read.format("com.github.lightcopy.spark.pr").
   option("user", "apache").option("repo", "spark").load().
   select("number", "title", "state", "base.repo.full_name", "user.login", "commits")
