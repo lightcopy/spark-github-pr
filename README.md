@@ -44,9 +44,9 @@ Currently supported options:
 
 | Name | Since | Example | Description |
 |------|:-----:|:-------:|-------------|
-| `user` | `1.0.0` | _apache_ | GitHub username or organization
-| `repo` | `1.0.0` | _spark_ | GitHub repository name for provided user
-| `batch` | `1.0.0` | _100_ | number of pull requests to fetch, default is 100 (single page), must be >= 1 and <= 1000
+| `user` | `1.0.0` | _apache_ | GitHub username or organization, default is `apache`
+| `repo` | `1.0.0` | _spark_ | GitHub repository name for provided user, default is `spark`
+| `batch` | `1.0.0` | _100_ | number of pull requests to fetch, default is 25, must be >= 1 and <= 1000
 | `token` | `1.0.0` | _auth_token_ | authentication token to increase rate limit from 60 to 5000, see [GitHub Auth for more info](https://developer.github.com/v3/#oauth2-token-sent-in-a-header)
 | `cacheDir` | `1.0.0` | _file:/tmp/.spark-github-pr_ | directory to store cached pull requests information, currently required to be shared folder on local file system or directory on HDFS.
 
@@ -54,6 +54,10 @@ Currently supported options:
 
 ### Scala API
 ```scala
+// Load default number of pull requests from apache/spark
+val df = sqlContext.read.format("com.github.lightcopy.spark.pr").load().
+  select("number", "title", "user.login")
+
 val df = sqlContext.read.format("com.github.lightcopy.spark.pr").
   option("user", "apache").option("repo", "spark").load().
   select("number", "title", "state", "base.repo.full_name", "user.login", "commits")

@@ -43,12 +43,10 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal with HttpTe
     startSparkSession()
   }
 
-  test("fail to extract username") {
+  test("return default username when none is provided") {
     val sqlContext = spark.sqlContext
-    val err = intercept[RuntimeException] {
-      new PullRequestRelation(sqlContext, Map.empty)
-    }
-    err.getMessage.contains("Expected 'user' option") should be (true)
+    val relation = new PullRequestRelation(sqlContext, Map.empty)
+    relation.user should be (relation.defaultUser)
   }
 
   test("extract empty username") {
@@ -56,20 +54,18 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal with HttpTe
     var err = intercept[RuntimeException] {
       new PullRequestRelation(sqlContext, Map("user" -> ""))
     }
-    err.getMessage.contains("Expected 'user' option") should be (true)
+    err.getMessage.contains("Expected non-empty 'user' option") should be (true)
 
     err = intercept[RuntimeException] {
       new PullRequestRelation(sqlContext, Map("user" -> "  "))
     }
-    err.getMessage.contains("Expected 'user' option") should be (true)
+    err.getMessage.contains("Expected non-empty 'user' option") should be (true)
   }
 
-  test("fail to extract repository") {
+  test("return default repository when none is provided") {
     val sqlContext = spark.sqlContext
-    val err = intercept[RuntimeException] {
-      new PullRequestRelation(sqlContext, Map("user" -> "user"))
-    }
-    err.getMessage.contains("Expected 'repo' option") should be (true)
+    val relation = new PullRequestRelation(sqlContext, Map("user" -> "user"))
+    relation.repo should be (relation.defaultRepo)
   }
 
   test("extract empty repository") {
@@ -77,12 +73,12 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal with HttpTe
     var err = intercept[RuntimeException] {
       new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> ""))
     }
-    err.getMessage.contains("Expected 'repo' option") should be (true)
+    err.getMessage.contains("Expected non-empty 'repo' option") should be (true)
 
     err = intercept[RuntimeException] {
       new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "  "))
     }
-    err.getMessage.contains("Expected 'repo' option") should be (true)
+    err.getMessage.contains("Expected non-empty 'repo' option") should be (true)
   }
 
   test("extract username, repository") {
@@ -137,7 +133,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal with HttpTe
   test("select default or valid batch size") {
     val sqlContext = spark.sqlContext
     var relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
-    relation.batchSize should be (relation.maxPageSize)
+    relation.batchSize should be (relation.defaultBatchSize)
 
     relation = new PullRequestRelation(sqlContext,
       Map("user" -> "user", "repo" -> "repo", "batch" -> "140"))
