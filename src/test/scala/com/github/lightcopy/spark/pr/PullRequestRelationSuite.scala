@@ -46,7 +46,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal with HttpTe
   test("return default username when none is provided") {
     val sqlContext = spark.sqlContext
     val relation = new PullRequestRelation(sqlContext, Map.empty)
-    relation.user should be (relation.defaultUser)
+    relation.user should be (PullRequestRelation.DEFAULT_USER)
   }
 
   test("extract empty username") {
@@ -65,7 +65,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal with HttpTe
   test("return default repository when none is provided") {
     val sqlContext = spark.sqlContext
     val relation = new PullRequestRelation(sqlContext, Map("user" -> "user"))
-    relation.repo should be (relation.defaultRepo)
+    relation.repo should be (PullRequestRelation.DEFAULT_REPO)
   }
 
   test("extract empty repository") {
@@ -133,7 +133,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal with HttpTe
   test("select default or valid batch size") {
     val sqlContext = spark.sqlContext
     var relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
-    relation.batchSize should be (relation.defaultBatchSize)
+    relation.batchSize should be (PullRequestRelation.DEFAULT_BATCH_SIZE)
 
     relation = new PullRequestRelation(sqlContext,
       Map("user" -> "user", "repo" -> "repo", "batch" -> "140"))
@@ -591,56 +591,44 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal with HttpTe
   }
 
   test("list from response - response 5xx failure") {
-    val sqlContext = spark.sqlContext
-    val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
     val err = intercept[RuntimeException] {
-      relation.listFromResponse(HttpResponse("Error", 500, Map.empty), None)
+      PullRequestRelation.listFromResponse(HttpResponse("Error", 500, Map.empty), None)
     }
     err.getMessage.contains("Request failed with code 500") should be (true)
   }
 
   test("list from response - response 4xx failure") {
-    val sqlContext = spark.sqlContext
-    val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
     val err = intercept[RuntimeException] {
-      relation.listFromResponse(HttpResponse("Error", 404, Map.empty), None)
+      PullRequestRelation.listFromResponse(HttpResponse("Error", 404, Map.empty), None)
     }
     err.getMessage.contains("Request failed with code 404") should be (true)
   }
 
   test("list from response - response 3xx failure") {
-    val sqlContext = spark.sqlContext
-    val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
     // fail on redirects as they are not supported for now
     val err = intercept[RuntimeException] {
-      relation.listFromResponse(HttpResponse("Error", 302, Map.empty), None)
+      PullRequestRelation.listFromResponse(HttpResponse("Error", 302, Map.empty), None)
     }
     err.getMessage.contains("Request failed with code 302") should be (true)
   }
 
   test("list from response - key does not exist") {
-    val sqlContext = spark.sqlContext
-    val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
     val err = intercept[RuntimeException] {
-      relation.listFromResponse(HttpResponse("[{\"a\": true}]", 200, Map.empty), None)
+      PullRequestRelation.listFromResponse(HttpResponse("[{\"a\": true}]", 200, Map.empty), None)
     }
     err.getMessage should be ("Failed to convert to 'PullRequestInfo', data=Map(a -> true)")
     err.getCause.getMessage should be ("Key id does not exist")
   }
 
   test("list from response - conversion fails") {
-    val sqlContext = spark.sqlContext
-    val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
     val err = intercept[RuntimeException] {
-      relation.listFromResponse(HttpResponse("[{\"id\": true}]", 200, Map.empty), None)
+      PullRequestRelation.listFromResponse(HttpResponse("[{\"id\": true}]", 200, Map.empty), None)
     }
     err.getMessage should be ("Failed to convert to 'PullRequestInfo', data=Map(id -> true)")
     err.getCause.getMessage.contains("cannot be cast to") should be (true)
   }
 
   test("list from response - parse into pull request info") {
-    val sqlContext = spark.sqlContext
-    val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
     val body = """[
       |{
       |  "id": 1,
@@ -649,7 +637,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal with HttpTe
       |  "updated_at": null,
       |  "created_at": "2010-10-23T12:52:31Z"
       |}]""".stripMargin
-    val seq = relation.listFromResponse(HttpResponse(body, 200, Map.empty), None)
+    val seq = PullRequestRelation.listFromResponse(HttpResponse(body, 200, Map.empty), None)
     seq.length should be (1)
     seq.head.id should be (1)
     seq.head.number should be (100)
@@ -658,8 +646,6 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal with HttpTe
   }
 
   test("list from response - parse with cache directory") {
-    val sqlContext = spark.sqlContext
-    val relation = new PullRequestRelation(sqlContext, Map("user" -> "user", "repo" -> "repo"))
     val body = """[
       |{
       |  "id": 1,
@@ -668,7 +654,8 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal with HttpTe
       |  "updated_at": "2010-11-01T09:38:15Z",
       |  "created_at": "2010-10-23T12:52:31Z"
       |}]""".stripMargin
-    val seq = relation.listFromResponse(HttpResponse(body, 200, Map.empty), None, Some("/folder"))
+    val seq = PullRequestRelation.listFromResponse(
+      HttpResponse(body, 200, Map.empty), None, Some("/folder"))
     seq.length should be (1)
     seq.head.id should be (1)
     seq.head.number should be (123)
@@ -775,5 +762,96 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal with HttpTe
     Utils.attempts(101, 100) should be (Seq(100, 1))
     Utils.attempts(200, 100) should be (Seq(100, 100))
     Utils.attempts(245, 100) should be (Seq(100, 100, 45))
+  }
+
+  test("cachekey - init") {
+    val key = CacheKey("user", "repo", 128, Some("token"), Some("directory"))
+    key.user should be ("user")
+    key.repo should be ("repo")
+    key.batchSize should be (128)
+    key.authToken should be (Some("token"))
+    key.cacheDirectory should be (Some("directory"))
+  }
+
+  test("cachekey - equals, null") {
+    val key = CacheKey("user", "repo", 128, None, None)
+    key.equals(null) should be (false)
+  }
+
+  test("cachekey - equals, arbitrary object") {
+    val key = CacheKey("user", "repo", 128, None, None)
+    key.equals(Option(null)) should be (false)
+    key.equals(Seq("a", "b", "c")) should be (false)
+  }
+
+  test("cachekey - equals, different user") {
+    val key1 = CacheKey("user1", "repo", 128, None, None)
+    val key2 = CacheKey("user2", "repo", 128, None, None)
+    key1.equals(key2) should be (false)
+  }
+
+  test("cachekey - equals, different repo") {
+    val key1 = CacheKey("user", "repo1", 128, None, None)
+    val key2 = CacheKey("user", "repo2", 128, None, None)
+    key1.equals(key2) should be (false)
+  }
+
+  test("cachekey - equals, different batch size") {
+    val key1 = CacheKey("user", "repo", 128, None, None)
+    val key2 = CacheKey("user", "repo", 129, None, None)
+    key1.equals(key2) should be (false)
+  }
+
+  test("cachekey - equals, different token") {
+    val key1 = CacheKey("user", "repo", 128, None, None)
+    val key2 = CacheKey("user", "repo", 128, Some("token"), None)
+    key1.equals(key2) should be (true)
+  }
+
+  test("cachekey - equals, different cache directory") {
+    val key1 = CacheKey("user", "repo", 128, None, None)
+    val key2 = CacheKey("user", "repo", 128, None, Some("directory"))
+    key1.equals(key2) should be (true)
+  }
+
+  test("cachekey - hashcode, comparison between two similar instances") {
+    val key1 = CacheKey("user", "repo", 128, None, None)
+    val key2 = CacheKey("user", "repo", 128, None, None)
+    key1.hashCode should be (key2.hashCode)
+  }
+
+  test("cachekey - hashcode, comparison between two different instances 1") {
+    val key1 = CacheKey("user", "repo", 128, None, Some("directory"))
+    val key2 = CacheKey("user", "repo", 128, Some("token"), None)
+    key1.hashCode should be (key2.hashCode)
+  }
+
+  test("cachekey - hashcode, comparison between two different instances 2") {
+    def notEqual(key1: CacheKey, key2: CacheKey): Unit = assert(key1.hashCode != key2.hashCode)
+    // different combinations of keys that should result in different hash codes
+    notEqual(CacheKey("user", "repo", 128, None, None), CacheKey("user", "repo", 129, None, None))
+    notEqual(CacheKey("user1", "repo", 128, None, None), CacheKey("user2", "repo", 128, None, None))
+    notEqual(CacheKey("user", "repo1", 128, None, None), CacheKey("user", "repo2", 128, None, None))
+    notEqual(CacheKey("a", "b", 128, None, None), CacheKey("b", "a", 128, None, None))
+    notEqual(CacheKey("a", "b", 0, None, None), CacheKey("b", "a", 0, None, None))
+    notEqual(CacheKey("a", "b", 1, Some("token"), None), CacheKey("a", "b", 2, Some("token"), None))
+  }
+
+  test("cachekey - toString, token provided") {
+    val key = CacheKey("a", "b", 5, Some("token"), None)
+    key.toString should be (
+      "CacheKey(user=a, repo=b, batchSize=5, authToken=Some(*****), cacheDirectory=None)")
+  }
+
+  test("cachekey - toString, no token provided") {
+    val key = CacheKey("a", "b", 5, None, None)
+    key.toString should be (
+      "CacheKey(user=a, repo=b, batchSize=5, authToken=None, cacheDirectory=None)")
+  }
+
+  test("cachekey, toString, cacheDirectory provided") {
+    val key = CacheKey("a", "b", 5, None, Some("file:/tmp"))
+    key.toString should be (
+      "CacheKey(user=a, repo=b, batchSize=5, authToken=None, cacheDirectory=Some(file:/tmp))")
   }
 }
