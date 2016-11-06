@@ -33,8 +33,35 @@ import org.apache.spark.sql.types._
 
 import scalaj.http.{Http, HttpRequest}
 
-/** Cache key for user/repo retrieval */
-private[spark] case class CacheKey(user: String, repo: String, batchSize: Int)
+/**
+ * Cache key for user/repo retrieval.
+ * 'authToken' and 'cacheDirectory' are mainly part of the key because of global cache, it is easier
+ * to pass values through key. Note that comparison is only done on user - repo - batchSize, since
+ * both auth token and directory do not force different cache value.
+ */
+private[spark] case class CacheKey(
+    user: String,
+    repo: String,
+    batchSize: Int,
+    authToken: Option[String],
+    cacheDirectory: Option[String]) {
+
+  override def hashCode(): Int = {
+    batchSize + 31 * (user.hashCode + 31 * repo.hashCode)
+  }
+
+  override def equals(obj: Any): Boolean = {
+    if (obj == null || !obj.isInstanceOf[CacheKey]) return false
+    val that = obj.asInstanceOf[CacheKey]
+    this.user == that.user && this.repo == that.repo && this.batchSize == that.batchSize
+  }
+
+  override def toString(): String = {
+    val authTokenStr = if (authToken.isDefined) "Some(*****)" else "None"
+    s"${getClass.getSimpleName}(user=$user, repo=$repo, batchSize=$batchSize, " +
+      s"authToken=$authTokenStr, cacheDirectory=$cacheDirectory)"
+  }
+}
 
 /** Generic utilities to work with pull requests and sending requests to GitHub */
 private[spark] object HttpUtils {
