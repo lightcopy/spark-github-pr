@@ -854,4 +854,78 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal with HttpTe
     key.toString should be (
       "CacheKey(user=a, repo=b, batchSize=5, authToken=None, cacheDirectory=Some(file:/tmp))")
   }
+
+  test("issue #8 - non-nullable field in schema is null") {
+    val schema = StructType(
+      StructField("a", StringType, true) ::
+      StructField("b", BooleanType, false) :: Nil)
+    val response = "{\"a\" : null, \"b\" : null}"
+    val err = intercept[IllegalStateException] {
+      PullRequestRDD.processResponseBody(schema, response)
+    }
+    err.getMessage should be ("Non-nullable field b has value null")
+  }
+
+  test("issue #8 - nullable field in schema is null") {
+    val schema = StructType(StructField("a", StringType, true) :: Nil)
+    val response = "{\"a\" : null}"
+    val row = PullRequestRDD.processResponseBody(schema, response)
+    row should be (Row(null))
+  }
+
+  test("issue #8 - non-nullable field in schema is not null") {
+    val schema = StructType(StructField("a", BooleanType, true) :: Nil)
+    val response = "{\"a\" : true}"
+    val row = PullRequestRDD.processResponseBody(schema, response)
+    row should be (Row(true))
+  }
+
+  test("issue #8 - mergeable field is null") {
+    // test actual (simplified) response and check mergeable field
+    val sqlContext = spark.sqlContext
+    val relation = new PullRequestRelation(sqlContext, Map.empty)
+    val response = """
+    {
+      "url": "url",
+      "id": 93545317,
+      "html_url": "url",
+      "diff_url": "url.diff",
+      "patch_url": "url.patch",
+      "number": 15880,
+      "state": "open",
+      "title": "title",
+      "user": {"login": "login", "id": 3182036, "url": "url", "html_url": "url"},
+      "body": "body",
+      "created_at": "2016-11-14T10:55:04Z",
+      "updated_at": "2016-11-16T06:20:00Z",
+      "closed_at": null,
+      "merged_at": null,
+      "base": {
+        "ref": "master",
+        "sha": "f95b124c68ccc2e318f6ac30685aa47770eea8f3",
+        "repo": {
+          "id": 17165658,
+          "name": "spark",
+          "full_name": "apache/spark",
+          "private": false,
+          "url": "url",
+          "html_url": "url",
+          "description": "description"
+        }
+      },
+      "merged": false,
+      "mergeable": null,
+      "comments": 15,
+      "commits": 3,
+      "additions": 38,
+      "deletions": 7,
+      "changed_files": 7
+    }
+    """
+    val row = PullRequestRDD.processResponseBody(relation.schema, response)
+    row(15).asInstanceOf[Boolean] should be (false)
+    // 'mergeable' should be null
+    row.isNullAt(16) should be (true)
+    row(17).asInstanceOf[Int] should be (15)
+  }
 }
