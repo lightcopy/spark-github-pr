@@ -41,7 +41,7 @@ class DefaultSource extends RelationProvider with StreamSourceProvider {
     require(schema.isEmpty, s"User-defined schema is not supported for provider $providerName")
     // validate all options by creating pull request relation
     val relation = createRelation(sqlContext, parameters)
-    // seems that provider name is not required, pass it for safety reasons
+    // seems that provider name is not required, still pass it for safety reasons
     (providerName, relation.schema)
   }
 
