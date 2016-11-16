@@ -151,7 +151,11 @@ private[spark] object Utils {
           if (value.isInstanceOf[BigInt]) value.asInstanceOf[BigInt].intValue else value
         case LongType =>
           if (value.isInstanceOf[BigInt]) value.asInstanceOf[BigInt].longValue else value
-        case BooleanType | DoubleType | StringType => value
+        case BooleanType | DoubleType | StringType =>
+          if (!field.nullable && value == null) {
+            throw new IllegalStateException(s"Non-nullable field ${field.name} has value $value")
+          }
+          value
         case TimestampType =>
           if (value != null) {
             val format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssX").parse(value.toString)
