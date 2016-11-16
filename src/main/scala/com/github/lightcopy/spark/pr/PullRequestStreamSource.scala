@@ -47,9 +47,9 @@ class PullRequestStreamSource(
   }
 
   // time snapshot to keep track of internal delay
-  private var timeSnapshot: Long = 0L
+  private[pr] var timeSnapshot: Long = 0L
   // next batch offset, just increment it by 1 for each batch
-  private var nextOffset: Option[Offset] = Some(LongOffset(0L))
+  private[pr] var nextOffset: Option[Offset] = Some(LongOffset(0L))
 
   /** Return exactly the same schema of base relation for stream source */
   override def schema: StructType = baseRelation.schema
