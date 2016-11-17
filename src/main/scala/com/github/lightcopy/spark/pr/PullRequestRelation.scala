@@ -144,8 +144,10 @@ class PullRequestRelation(
         StructField("url", StringType, true) ::
         StructField("html_url", StringType, true) :: Nil), true) ::
       // pull request statistics
+      // value of "mergeable" field can be true, false, or null. If the value is null, this means
+      // that the mergeability hasn't been computed yet.
       StructField("merged", BooleanType, false) ::
-      StructField("mergeable", BooleanType, false) ::
+      StructField("mergeable", BooleanType, true) ::
       StructField("comments", IntegerType, false) ::
       StructField("commits", IntegerType, false) ::
       StructField("additions", IntegerType, false) ::

@@ -28,16 +28,16 @@ scala> df.select("number", "title", "state", "base.repo.full_name", "user.login"
 ## Requirements
 | Spark version | spark-github-pr latest version |
 |---------------|--------------------------------|
-| 1.6.x | [1.1.0](http://spark-packages.org/package/lightcopy/spark-github-pr) |
-| 2.x.x | [1.1.0](http://spark-packages.org/package/lightcopy/spark-github-pr) |
+| 1.6.x | [1.2.0](http://spark-packages.org/package/lightcopy/spark-github-pr) |
+| 2.x.x | [1.2.0](http://spark-packages.org/package/lightcopy/spark-github-pr) |
 
 ## Linking
 The spark-github-pr package can be added to Spark by using the `--packages` command line option.
 For example, run this to include it when starting the spark shell:
 ```shell
- $SPARK_HOME/bin/spark-shell --packages lightcopy:spark-github-pr:1.1.0-s_2.10
+ $SPARK_HOME/bin/spark-shell --packages lightcopy:spark-github-pr:1.2.0-s_2.10
 ```
-Change to `lightcopy:spark-github-pr:1.1.0-s_2.11` for Scala 2.11.x
+Change to `lightcopy:spark-github-pr:1.2.0-s_2.11` for Scala 2.11.x
 
 ### Options
 Currently supported options:
