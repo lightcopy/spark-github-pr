@@ -17,16 +17,42 @@
 package com.github.lightcopy.spark.pr
 
 import org.apache.spark.sql.SQLContext
-import org.apache.spark.sql.sources.{BaseRelation, RelationProvider}
+import org.apache.spark.sql.execution.streaming.Source
+import org.apache.spark.sql.sources.{BaseRelation, RelationProvider, StreamSourceProvider}
+import org.apache.spark.sql.types.StructType
 
 /**
  * Default source provider for GitHub PR datasource.
- * Schema inferrence is not supported for now.
+ * Schema inferrence is not required and user-defined schema is not supported for now.
+ * Source also provides stream source.
  */
-class DefaultSource extends RelationProvider {
+class DefaultSource extends RelationProvider with StreamSourceProvider {
   override def createRelation(
       sqlContext: SQLContext,
       parameters: Map[String, String]): BaseRelation = {
     new PullRequestRelation(sqlContext, parameters)
+  }
+
+  override def sourceSchema(
+      sqlContext: SQLContext,
+      schema: Option[StructType],
+      providerName: String,
+      parameters: Map[String, String]): (String, StructType) = {
+    require(schema.isEmpty, s"User-defined schema is not supported for provider $providerName")
+    // validate all options by creating pull request relation
+    val relation = createRelation(sqlContext, parameters)
+    // seems that provider name is not required, still pass it for safety reasons
+    (providerName, relation.schema)
+  }
+
+  override def createSource(
+      sqlContext: SQLContext,
+      metadataPath: String,
+      schema: Option[StructType],
+      providerName: String,
+      parameters: Map[String, String]): Source = {
+    require(schema.isEmpty, s"User-defined schema is not supported for provider $providerName")
+    new PullRequestStreamSource(sqlContext, new PullRequestRelation(sqlContext, parameters),
+      metadataPath)
   }
 }

@@ -8,10 +8,12 @@ Spark SQL datasource for GitHub PR API.
 Package allows to query GitHub API v3 to fetch pull request information. Launches first requests on
 driver to list available pull requests, and creates tasks with pull requests details to execute. PRs
 are cached in `cacheDir` value to save rate limit. It is recommended to use token to remove 60
-requests/hour constraint.
+requests/hour constraint. Package also supports loading pull requests using structured streaming
+(experimental, for Spark 2.x only), see usage example below.
+
 Most of JSON keys are supported, see schema [here](./src/main/scala/com/github/lightcopy/spark/pr/PullRequestRelation.scala#L106),
 here is an example output for subset of columns you might see:
-```sh
+```
 scala> df.select("number", "title", "state", "base.repo.full_name", "user.login",
   "commits", "additions", "deletions")
 
@@ -82,6 +84,13 @@ USING com.github.lightcopy.spark.pr
 OPTIONS (user "apache", repo "spark");
 
 SELECT number, title FROM prs LIMIT 10;
+```
+
+### Structured Streaming API
+```scala
+val df = spark.readStream.format("com.github.lightcopy.spark.pr").load()
+val query = df.select("number", "title", "user.login").
+  writeStream.format("console").option("checkpointLocation", "./checkpoint").start()
 ```
 
 ## Building From Source
