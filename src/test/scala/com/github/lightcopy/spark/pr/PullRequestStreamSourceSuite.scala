@@ -29,7 +29,7 @@ class PullRequestStreamSourceSuite extends UnitTestSuite with SparkLocal {
   }
 
   override def afterAll {
-    startSparkSession()
+    stopSparkSession()
   }
 
   test("validate internal delay const") {

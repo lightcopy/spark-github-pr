@@ -40,7 +40,7 @@ class PullRequestRelationSuite extends UnitTestSuite with SparkLocal with HttpTe
   }
 
   override def afterAll {
-    startSparkSession()
+    stopSparkSession()
   }
 
   test("return default username when none is provided") {

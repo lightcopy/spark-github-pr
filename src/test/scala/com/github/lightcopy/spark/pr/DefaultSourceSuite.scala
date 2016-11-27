@@ -27,7 +27,7 @@ class DefaultSourceSuite extends UnitTestSuite with SparkLocal {
   }
 
   override def afterAll {
-    startSparkSession()
+    stopSparkSession()
   }
 
   test("create pull request relation") {
