@@ -30,7 +30,7 @@ scala> df.select("number", "title", "state", "base.repo.full_name", "user.login"
 ## Requirements
 | Spark version | spark-github-pr latest version |
 |---------------|--------------------------------|
-| 1.6.x | [1.3.0](http://spark-packages.org/package/lightcopy/spark-github-pr) |
+| 1.6.x | [1.2.0](http://spark-packages.org/package/lightcopy/spark-github-pr) |
 | 2.x.x | [1.3.0](http://spark-packages.org/package/lightcopy/spark-github-pr) |
 
 ## Linking
