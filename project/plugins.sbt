@@ -4,7 +4,7 @@ resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/release
 
 resolvers += "sonatype-releases" at "https://oss.sonatype.org/content/repositories/releases/"
 
-resolvers += "Spark Package Main Repo" at "https://dl.bintray.com/spark-packages/maven"
+resolvers += "Spark Package Main Repo" at "https://repos.spark-packages.org/"
 
 resolvers += "Lightcopy releases" at "https://raw.githubusercontent.com/lightcopy/releases/master/"
 
@@ -14,7 +14,7 @@ addSbtPlugin("com.github.mpeltonen" % "sbt-idea" % "1.6.0")
 
 addSbtPlugin("com.jsuereth" % "sbt-pgp" % "1.0.0")
 
-addSbtPlugin("org.spark-packages" % "sbt-spark-package" % "0.2.4")
+addSbtPlugin("org.spark-packages" % "sbt-spark-package" % "0.2.6")
 
 addSbtPlugin("org.scoverage" % "sbt-scoverage" % "1.3.5")
 
